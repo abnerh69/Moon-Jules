@@ -69,6 +69,11 @@ segundos podía ser culpa del API o del cliente, y no había dato. Incluye
 `base_url` configurable, sin la cual el mock no servía para probar la
 CLI, y unifica el formato de duraciones entre columna y motivo.
 
+### E16 — Peso de las respuestas *(entrega 08)*
+Respuesta parcial con `fields` para no descargar diffs ni capturas de
+pantalla, y arranque acotado para no paginar la historia entera de cada
+sesión. Segunda nota de campo en ADR-001.
+
 ## Siguiente ola
 
 ## Ola de autonomía

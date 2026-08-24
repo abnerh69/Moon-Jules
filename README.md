@@ -130,12 +130,16 @@ archiva sesiones. La lista completa de lo que no hará está en
 **v0.4.0 — `watch` desatendido, triable y con freno.** Funcionan `doctor`, `sources`, `status`
 y `watch`, con detector calibrado, notificaciones nativas, logging con
 redacción de credenciales, carga desde `.env`, lock de instancia única,
-triaje de hallazgos, historial local e interruptor de autonomía. 136
+triaje de hallazgos, historial local e interruptor de autonomía. 140
 tests, incluido un barrido de secretos sobre todo el árbol.
 
 `moon-jules doctor` mide la latencia real de tu API y proyecta el coste
 de un ciclo, que es el dato que dice si un ciclo lento es culpa del
 servidor o del cliente.
+
+Moon-Jules pide respuestas parciales: no descarga los diffs ni las
+capturas de pantalla que Jules adjunta a cada actividad. El código de
+tus repositorios no se guarda **y tampoco se descarga**.
 
 `watch` ya se puede dejar corriendo en una pestaña y olvidarse: avisa por
 notificación del sistema, deja rastro en disco y no se pisa consigo mismo.

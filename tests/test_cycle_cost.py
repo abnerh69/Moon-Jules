@@ -364,3 +364,91 @@ def test_la_url_base_tiene_default_de_produccion(tmp_path):
         assert load(cfg).base_url == "https://jules.googleapis.com/v1alpha"
     finally:
         del os.environ["MJ_K2"]
+
+
+# --------------------------------------------------------------------
+# lo que de verdad costaba: el peso de cada respuesta
+# --------------------------------------------------------------------
+
+
+def test_las_actividades_se_piden_sin_artefactos():
+    """Sin máscara, cada actividad arrastra sus `artifacts`.
+
+    Ahí viajan los diffs completos (`changeSet.gitPatch.unidiffPatch`) y
+    las capturas de pantalla en base64 (`media.data`) que Jules genera al
+    verificar front-ends. Se descargaban megabytes de código para leer un
+    timestamp. Además de lento, contradecía el espíritu del NO 10: ahora
+    el código del repositorio ni siquiera viaja por el cable.
+    """
+    import httpx
+
+    from moon_jules.client import JulesClient
+
+    vistos: list[str] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        vistos.append(req.url.params.get("fields", ""))
+        return httpx.Response(200, json={"activities": []})
+
+    c = JulesClient("k", client=httpx.AsyncClient(
+        base_url="http://x/v1alpha", transport=httpx.MockTransport(handler)))
+    run(c.activities("sessions/1"))
+    run(c.aclose())
+    assert vistos and "artifacts" not in vistos[0]
+    assert "createTime" in vistos[0]
+    assert "originator" in vistos[0]
+
+
+def test_si_el_api_rechaza_la_mascara_se_sigue_sin_ella():
+    """La máscara no se pudo verificar contra el API real antes de
+    publicarla, así que degradar es preferible a romper el ciclo."""
+    import httpx
+
+    from moon_jules.client import JulesClient
+
+    intentos: list[bool] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        con_mascara = "fields" in req.url.params
+        intentos.append(con_mascara)
+        if con_mascara:
+            return httpx.Response(400, json={"error": {
+                "code": 400, "status": "INVALID_ARGUMENT", "message": "bad mask"}})
+        return httpx.Response(200, json={"activities": []})
+
+    c = JulesClient("k", client=httpx.AsyncClient(
+        base_url="http://x/v1alpha", transport=httpx.MockTransport(handler)))
+    run(c.activities("sessions/1"))
+    assert intentos == [True, False]
+    run(c.activities("sessions/2"))       # ya no vuelve a intentarla
+    assert intentos == [True, False, False]
+    run(c.aclose())
+
+
+def test_la_primera_vista_no_pide_la_historia_entera(tmp_path):
+    """Sin acotar, una sesión con cientos de actividades cuesta páginas.
+
+    Solo interesa la cola: la última actividad del agente.
+    """
+    s = Session(name="sessions/vieja", state=SessionState.IN_PROGRESS, source=SRC,
+                create_time=ago(days=200), update_time=ago(days=100))
+    cfg = config(tmp_path)
+    with Store(cfg.state_path) as store:
+        client = CountingClient([s], {})
+        run(Monitor(client, cfg, store).cycle())
+    assert len(client.activity_calls) == 1
+
+
+def test_sin_ancla_una_sesion_muerta_no_pasa_por_sana(tmp_path):
+    """El peor error posible: reportar viva una sesión parada.
+
+    Si no hay actividades en la ventana, ni dato guardado, ni
+    `updateTime`, el reloj se ancla en `createTime` antes que quedarse
+    sin correr.
+    """
+    s = Session(name="sessions/x", state=SessionState.IN_PROGRESS, source=SRC,
+                create_time=ago(days=120), update_time=None)
+    cfg = config(tmp_path)
+    with Store(cfg.state_path) as store:
+        report = run(Monitor(CountingClient([s], {}), cfg, store).cycle())
+    assert report.attention, "una sesión sin señal de vida no puede salir sana"

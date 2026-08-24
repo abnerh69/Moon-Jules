@@ -119,6 +119,9 @@ Contrato verificado el 2026-08-24 contra el API en vivo:
   estado ni por source. Orden descendente por `createTime`.
 - `activities.list` va en orden ascendente. Página máxima 100 en ambos.
 - No hay webhooks. No hay headers de cuota.
+- `fields` (respuesta parcial) sí está soportado, y se usa. **No lo
+  quites**: sin él, cada actividad arrastra diffs completos y capturas
+  en base64, y un ciclo pasa de segundos a un minuto.
 - Estados: `QUEUED`, `PLANNING`, `AWAITING_PLAN_APPROVAL`,
   `AWAITING_USER_FEEDBACK`, `IN_PROGRESS`, `PAUSED`, `FAILED`,
   `COMPLETED`, más `STATE_UNSPECIFIED`.

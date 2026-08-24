@@ -71,6 +71,7 @@ def config(mode: AutonomyMode, tmp_path, **policy_kw) -> Config:
 
 
 def sess(state: SessionState, name="sessions/1", **kw) -> Session:
+    kw.setdefault("update_time", ago(minutes=1))
     return Session(name=name, state=state, source=SRC,
                    create_time=kw.pop("create_time", ago(hours=1)), **kw)
 
@@ -123,7 +124,11 @@ def test_el_nudge_no_reinicia_su_propio_reloj(tmp_path):
 
 
 def test_segundo_ciclo_usa_el_cursor(tmp_path):
-    """La segunda pasada pide solo lo nuevo (ADR-001)."""
+    """La segunda pasada pide solo lo nuevo (ADR-001).
+
+    La primera tampoco pide la historia entera: arranca en una ventana
+    reciente. Lo que se comprueba es que el cursor avanza.
+    """
     s = sess(SessionState.IN_PROGRESS)
     a = act("progressUpdated", "agent", ago(minutes=2))
     client = FakeClient([s], {s.name: [a]})
@@ -132,8 +137,9 @@ def test_segundo_ciclo_usa_el_cursor(tmp_path):
         mon = Monitor(client, cfg, store)
         run(mon.cycle())
         run(mon.cycle())
-    assert client.activity_calls[0][1] is None
-    assert client.activity_calls[1][1] is not None
+    primera, segunda = client.activity_calls[0][1], client.activity_calls[1][1]
+    assert primera is not None, "la primera vista debe acotarse, no pedirlo todo"
+    assert segunda > primera, "el cursor no avanzo"
 
 
 def test_frescura_sobrevive_al_cursor_vacio(tmp_path):
@@ -192,7 +198,7 @@ def test_presupuesto_de_nudges_frena_la_insistencia(tmp_path):
 
 def test_multiples_sesiones_se_ordenan_por_atencion(tmp_path):
     sana = sess(SessionState.IN_PROGRESS, name="sessions/ok")
-    mala = sess(SessionState.PAUSED, name="sessions/bad")
+    mala = sess(SessionState.PAUSED, name="sessions/bad", update_time=ago(days=90))
     client = FakeClient(
         [sana, mala],
         {

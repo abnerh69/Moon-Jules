@@ -30,10 +30,33 @@ from .errors import (
     RequestInvalidError,
     TransientError,
 )
+from .logs import get as get_logger
 from .models import Activity, Session
+
+log = get_logger("client")
 
 BASE_URL = "https://jules.googleapis.com/v1alpha"
 PAGE_MAX = 100  # tope duro del API para sessions y activities
+
+#: Tope de paginas por sesion. Con el arranque acotado no deberia
+#: alcanzarse; existe para que una sesion patologica no bloquee un ciclo.
+MAX_PAGES = 10
+
+# Respuesta parcial (`fields`, parametro de sistema de las APIs de Google).
+# Sin esto, cada actividad arrastra sus `artifacts`: diffs completos en
+# `changeSet.gitPatch.unidiffPatch` y capturas de pantalla en base64 en
+# `media.data`. Se descargaban megabytes de codigo para leer un timestamp.
+# Ademas de lento, contradecia el espiritu del NO 10 del Inception: ahora
+# el codigo del repositorio ni siquiera viaja por el cable.
+FIELDS_SESSIONS = (
+    "nextPageToken,sessions(name,id,state,title,url,archived,"
+    "createTime,updateTime,sourceContext/source,outputs/pullRequest/url)"
+)
+FIELDS_ACTIVITIES = (
+    "nextPageToken,activities(name,id,originator,createTime,description,"
+    "sessionCompleted,sessionFailed,planApproved,planGenerated/plan/id,"
+    "userMessaged/userMessage,agentMessaged/agentMessage,progressUpdated/title)"
+)
 
 
 class JulesClient:
@@ -50,6 +73,8 @@ class JulesClient:
             raise AuthError("credencial vacia: revisa la configuracion")
         self._max_retries = max_retries
         self._latencies: list[float] = []
+        #: Se apaga solo si el API rechaza la mascara de campos.
+        self._partial = True
         self._http = client or httpx.AsyncClient(
             base_url=base_url,
             timeout=timeout,
@@ -139,20 +164,49 @@ class JulesClient:
         raise last if last else JulesError("fallo desconocido")
 
     async def _paginate(
-        self, path: str, key: str, params: dict[str, Any] | None = None
+        self,
+        path: str,
+        key: str,
+        params: dict[str, Any] | None = None,
+        fields: str | None = None,
+        max_pages: int = MAX_PAGES,
     ) -> AsyncIterator[dict]:
         token: str | None = None
-        while True:
+        for _ in range(max_pages):
             q = dict(params or {})
             q["pageSize"] = PAGE_MAX
             if token:
                 q["pageToken"] = token
-            data = await self._request("GET", path, params=q)
+            if fields and self._partial:
+                q["fields"] = fields
+            data = await self._get_tolerando_mascara(path, q)
             for item in data.get(key) or []:
                 yield item
             token = data.get("nextPageToken")
             if not token:
                 return
+        log.warning("%s: se alcanzo el tope de %d paginas", path, max_pages)
+
+    async def _get_tolerando_mascara(self, path: str, q: dict[str, Any]) -> dict:
+        """Pide con mascara de campos; si el API la rechaza, sin ella.
+
+        La mascara no se pudo verificar contra el API real antes de
+        publicarla, asi que degradar es preferible a romper el ciclo. Se
+        desactiva para toda la sesion del cliente, no solo para esta
+        peticion: si la rechazo una vez, las rechazara todas.
+        """
+        try:
+            return await self._request("GET", path, params=q)
+        except RequestInvalidError:
+            if "fields" not in q:
+                raise
+            self._partial = False
+            log.warning(
+                "el API rechazo la mascara de campos; se continua sin ella "
+                "(las respuestas seran mas pesadas)"
+            )
+            q.pop("fields")
+            return await self._request("GET", path, params=q)
 
     # ---------- recursos ----------
 
@@ -170,7 +224,9 @@ class JulesClient:
         )
         return [
             Session.from_api(raw)
-            async for raw in self._paginate("/sessions", "sessions", params)
+            async for raw in self._paginate(
+                "/sessions", "sessions", params, fields=FIELDS_SESSIONS, max_pages=50
+            )
         ]
 
     async def session(self, name: str) -> Session:
@@ -187,7 +243,9 @@ class JulesClient:
         """
         params = {"filter": f'create_time > "{after}"'} if after else {}
         out: list[Activity] = []
-        async for raw in self._paginate(f"/{_norm(name)}/activities", "activities", params):
+        async for raw in self._paginate(
+            f"/{_norm(name)}/activities", "activities", params, fields=FIELDS_ACTIVITIES
+        ):
             out.append(Activity.from_api(raw))
             if limit and len(out) >= limit:
                 break

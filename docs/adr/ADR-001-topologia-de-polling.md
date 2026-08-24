@@ -56,7 +56,34 @@ test que las fija:
 Efecto medido con latencia de 350 ms por peticion sobre un enjambre como
 el real: ciclo estable de 26 a 15 peticiones, y de 9.3 a 2.9 segundos.
 
-El suelo restante son las 6 paginas de `sessions.list`, que son
+**Segunda nota de campo (entrega 08).** Las correcciones anteriores no
+bastaron: un `status` seguia tardando 60 segundos. La causa no era el
+numero de peticiones sino **el peso de cada respuesta**.
+
+`activities.list` devuelve los `artifacts` de cada actividad, y ahi
+viajan los diffs completos (`changeSet.gitPatch.unidiffPatch`) y las
+capturas de pantalla en base64 (`media.data`) que Jules genera al
+verificar front-ends. Se descargaban megabytes de codigo para leer un
+`createTime`.
+
+Dos correcciones:
+
+- **Respuesta parcial.** Las APIs de Google aceptan `fields` como
+  parametro de sistema, confirmado en el discovery doc. Se pide solo lo
+  que el detector usa. Como la mascara no se pudo verificar contra el
+  API real antes de publicarla, el cliente la reintenta sin ella si
+  recibe `INVALID_ARGUMENT`, y la desactiva para el resto de la sesion.
+- **Arranque acotado.** En la primera vista de una sesion no hay cursor,
+  y se paginaba su historia entera. Solo interesa la cola, asi que se
+  pide una ventana reciente (`bootstrap_lookback_s`, 24 h por defecto,
+  96 veces N). Si esta vacia, la propia `updateTime` ya dice que la
+  sesion lleva mas tiempo callada que la ventana.
+
+Efecto colateral que conviene anotar: el codigo de los repositorios ya
+ni siquiera viaja por el cable. El NO 10 del Inception decia que no se
+guarda; ahora tampoco se descarga.
+
+El suelo restante son las paginas de `sessions.list`, que son
 inevitablemente secuenciales: cada pagina necesita el token de la
 anterior.
 

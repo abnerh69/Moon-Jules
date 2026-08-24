@@ -243,16 +243,37 @@ class Monitor:
             self.store.resolve_nudge(f.session.name, "unanswered", at)
 
     async def _freshness(self, s: Session) -> tuple[Freshness, str | None]:
-        """Frescura de una sesion no terminal, leyendo solo lo nuevo."""
+        """Frescura de una sesion no terminal, leyendo solo lo nuevo.
+
+        En la primera vista no hay cursor, y sin acotar se paginaba la
+        historia entera de la sesion — cientos de actividades para
+        averiguar cuando fue la ultima. Solo interesa la cola: se pide
+        una ventana reciente, muy superior al umbral N, y si esta vacia
+        la propia `updateTime` de la sesion ya dice que lleva mas tiempo
+        callada que la ventana, que es cuanto hace falta saber.
+        """
         cursor = self.store.cursor_for(s.name) if self.store else None
-        acts = await self.client.activities(s.name, after=cursor)
+        arranque = None
+        if cursor is None:
+            desde = now() - timedelta(seconds=self.config.bootstrap_lookback_s)
+            arranque = desde.isoformat().replace("+00:00", "Z")
+        acts = await self.client.activities(s.name, after=cursor or arranque)
         fresh = freshness(acts)
         if not fresh.last_agent_at and self.store:
             # El cursor ya consumio las actividades viejas: usa lo guardado.
             prev_at, prev_kind = self.store.known_freshness(s.name)
             fresh = Freshness(prev_at, prev_kind)
+        if not fresh.last_agent_at:
+            # Nada guardado y nada en la ventana: la sesion lleva callada
+            # al menos ese tiempo. Se ancla en `updateTime`, y si tampoco
+            # lo hay, en `createTime`: sin ancla el reloj no corre y una
+            # sesion muerta se reportaria como sana, que es el peor error
+            # posible en esta herramienta.
+            fresh = Freshness(s.update_time or s.create_time, None)
         newest = max((a.create_time for a in acts if a.create_time), default=None)
-        return fresh, newest.isoformat().replace("+00:00", "Z") if newest else cursor
+        if newest:
+            return fresh, newest.isoformat().replace("+00:00", "Z")
+        return fresh, cursor or arranque
 
     async def _failure_reason(self, s: Session) -> str:
         acts = await self.client.activities(s.name, limit=None)

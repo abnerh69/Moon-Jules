@@ -116,6 +116,10 @@ class Config:
     #: Peticiones de actividades en paralelo. El API no publica cuota
     #: (ADR-001), asi que el limite es autoimpuesto y conservador.
     max_concurrency: int = 5
+    #: Ventana de la primera consulta de actividades de una sesion. Muy
+    #: superior a N: si no hay nada en 24 h, la sesion esta parada y no
+    #: hace falta su historia para saberlo.
+    bootstrap_lookback_s: int = 86400
     default_mode: AutonomyMode = AutonomyMode.READ_ONLY
     policy: Policy = field(default_factory=Policy)
     budgets: Budgets = field(default_factory=Budgets)
@@ -230,6 +234,7 @@ def load(path: Path | None = None, *, dotenv: Path | None = None) -> Config:
         base_url=base_url,
         poll_interval_s=int(watch.get("poll_interval_s", 300)),
         max_concurrency=max(1, int(watch.get("max_concurrency", 5))),
+        bootstrap_lookback_s=int(watch.get("bootstrap_lookback_s", 86400)),
         default_mode=default_mode,
         policy=base_policy,
         budgets=budgets,
