@@ -32,6 +32,7 @@ from .detector import (
     Verdict,
     assess,
     freshness,
+    humano,
 )
 from .errors import ConfigError, MoonJulesError
 from .lock import AlreadyRunningError, InstanceLock
@@ -83,17 +84,9 @@ def parse_duracion(texto: str) -> timedelta:
     return timedelta(seconds=int(m.group(1)) * UNIDADES[m.group(2).lower()])
 
 
-def humano(segundos: float | None) -> str:
-    """Duracion legible. `136800m` no le dice nada a nadie; `95d` si."""
-    if segundos is None:
-        return "    -"
-    m = segundos / 60
-    if m < 90:
-        return f"{m:4.0f}m"
-    h = m / 60
-    if h < 48:
-        return f"{h:4.0f}h"
-    return f"{h/24:4.0f}d"
+def columna(segundos: float | None) -> str:
+    """`humano()` alineado a la anchura de la columna."""
+    return f"{humano(segundos).replace(' ', ''):>5}"
 
 
 class Progress:
@@ -301,7 +294,7 @@ def render(report: Report, *, only_attention: bool = False) -> str:
     width = min(34, max((len(f.session.repo) for f in rows), default=10))
     out = []
     for f in rows:
-        sil = humano(f.silence_s)
+        sil = columna(f.silence_s)
         title = (f.session.title or "")[:30]
         marca = "~~" if f.acked else GLYPH.get(f.verdict.value, "  ")
         out.append(
@@ -341,20 +334,44 @@ async def cmd_doctor(cfg: Config, args: argparse.Namespace) -> int:
             donde = "global" if scope == GLOBAL_SCOPE else scope
             hasta = f" hasta {row['until'][:16]}" if row["until"] else " indefinida"
             print(f"PAUSA       {donde}{hasta}  {row['reason'] or ''}")
-    async with JulesClient(cfg.api_key) as c:
+    async with JulesClient(cfg.api_key, base_url=cfg.base_url) as c:
+        prog = Progress()
+        prog.step("consultando el API")
         src = await c.sources()
         ses = await c.sessions()
+        prog.done()
         activas = [s for s in ses if s.state not in TERMINAL]
+        paginas = max(1, -(-len(ses) // 100))
         print(f"\nAPI         OK: {len(src)} sources, {len(ses)} sesiones, "
               f"{len(activas)} no terminales")
         if len(activas) >= cfg.budgets.max_active_sessions:
             print(f"aviso       tope de concurrencia alcanzado ({len(activas)}/"
                   f"{cfg.budgets.max_active_sessions})")
+
+        # Sin esta medida no hay forma de saber si un ciclo lento es
+        # culpa del API o del cliente, que es justo la duda que provoco
+        # la entrega 06.
+        lat = sorted(c.latencies)
+        if lat:
+            p50 = lat[len(lat) // 2] / 1000
+            p90 = lat[min(len(lat) - 1, int(len(lat) * 0.9))] / 1000
+            print(f"\nlatencia    {len(lat)} peticiones: "
+                  f"p50 {p50:.2f}s  p90 {p90:.2f}s  max {max(lat)/1000:.2f}s")
+            reqs = paginas + len(activas)
+            serie = paginas * p50
+            paralelo = -(-len(activas) // cfg.max_concurrency) * p50
+            print(f"ciclo       {reqs} peticiones "
+                  f"({paginas} paginas + {len(activas)} activas)")
+            print(f"            ~{serie + paralelo:.0f}s con paralelismo "
+                  f"{cfg.max_concurrency}")
+            if p50 > 1.0:
+                print("            el API responde lento; el suelo son las "
+                      "paginas, que van en serie")
     return 0
 
 
 async def cmd_sources(cfg: Config, args: argparse.Namespace) -> int:
-    async with JulesClient(cfg.api_key) as c:
+    async with JulesClient(cfg.api_key, base_url=cfg.base_url) as c:
         for s in sorted(await c.sources(), key=lambda x: x.get("id", "")):
             gh = s.get("githubRepo") or {}
             mode = cfg.for_source(s.get("name")).mode.value
@@ -364,7 +381,7 @@ async def cmd_sources(cfg: Config, args: argparse.Namespace) -> int:
 
 
 async def cmd_status(cfg: Config, args: argparse.Namespace) -> int:
-    async with JulesClient(cfg.api_key) as c:
+    async with JulesClient(cfg.api_key, base_url=cfg.base_url) as c:
         with Store(cfg.state_path) as store:
             report = await Monitor(c, cfg, store).cycle(
                 execute=False, progress=Progress()
@@ -391,7 +408,7 @@ async def cmd_ack(cfg: Config, args: argparse.Namespace) -> int:
             return 0
 
         if args.session:
-            async with JulesClient(cfg.api_key) as c:
+            async with JulesClient(cfg.api_key, base_url=cfg.base_url) as c:
                 report = await Monitor(c, cfg, store).cycle(execute=False)
             objetivo = _norm_session(args.session)
             match = [f for f in report.problems if f.session.name == objetivo]
@@ -405,7 +422,7 @@ async def cmd_ack(cfg: Config, args: argparse.Namespace) -> int:
 
         # --stale-before: el caso de uso real, la deuda acumulada
         corte = datetime.fromisoformat(args.stale_before).replace(tzinfo=UTC)
-        async with JulesClient(cfg.api_key) as c:
+        async with JulesClient(cfg.api_key, base_url=cfg.base_url) as c:
             report = await Monitor(c, cfg, store).cycle(execute=False)
         candidatas = [
             f
@@ -518,7 +535,7 @@ async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
         f"logs en {cfg.log_dir}\nCtrl+C para detener."
     )
     try:
-        async with JulesClient(cfg.api_key) as c:
+        async with JulesClient(cfg.api_key, base_url=cfg.base_url) as c:
             with Store(cfg.state_path) as store:
                 mon = Monitor(c, cfg, store)
                 notifier = Notifier(

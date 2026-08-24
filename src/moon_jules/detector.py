@@ -22,6 +22,24 @@ CLOCK_FREEZING = frozenset({"sessionCompleted", "sessionFailed"})
 TERMINAL_STATES = frozenset({SessionState.COMPLETED, SessionState.FAILED})
 
 
+def humano(segundos: float | None) -> str:
+    """Duracion legible. `144270 min` no le dice nada a nadie; `100d` si.
+
+    Vive aqui y no en la CLI porque los motivos que redacta el detector
+    tambien los lee un humano, y tenerlo en dos sitios ya produjo una
+    salida donde la columna decia `100d` y el motivo `144270 min`.
+    """
+    if segundos is None:
+        return "-"
+    m = segundos / 60
+    if m < 90:
+        return f"{m:.0f} min"
+    h = m / 60
+    if h < 48:
+        return f"{h:.0f} h"
+    return f"{h/24:.0f} d"
+
+
 class Verdict(StrEnum):
     HEALTHY = "healthy"
     STALLED = "stalled"
@@ -195,7 +213,7 @@ def assess(
             return out(
                 Verdict.QUEUED_SLOW,
                 Action.ALERT,
-                f"en cola {waited/60:.0f} min: posible tope de concurrencia",
+                f"en cola {humano(waited)}: posible tope de concurrencia",
             )
         return out(Verdict.HEALTHY, Action.NONE, "en cola")
 
@@ -210,7 +228,7 @@ def assess(
             return out(
                 Verdict.NUDGE_UNANSWERED,
                 Action.ALERT,
-                f"nudge sin respuesta tras {since_nudge/60:.0f} min",
+                f"nudge sin respuesta tras {humano(since_nudge)}",
             )
         if not answered:
             return out(Verdict.HEALTHY, Action.NONE, "esperando respuesta al nudge")
@@ -227,7 +245,7 @@ def assess(
         if sil > p.stall_after_s:
             # El API no expone resume. Solo se puede avisar.
             return out(
-                Verdict.PAUSED_STALE, Action.ALERT, f"pausada y muda {sil/60:.0f} min"
+                Verdict.PAUSED_STALE, Action.ALERT, f"pausada y muda desde hace {humano(sil)}"
             )
         return out(Verdict.HEALTHY, Action.NONE, "pausada recientemente")
 
@@ -236,7 +254,7 @@ def assess(
         return out(Verdict.HEALTHY, Action.NONE, f"activa, ultimo latido {sil:.0f}s")
 
     if st is SessionState.PLANNING and sil <= threshold * 2:
-        return out(Verdict.HEALTHY, Action.NONE, f"planificando, {sil/60:.0f} min")
+        return out(Verdict.HEALTHY, Action.NONE, f"planificando, {humano(sil)}")
 
     spent = nudge.count if nudge else 0
     if spent >= p.max_nudges_per_session:
@@ -245,7 +263,7 @@ def assess(
             Action.ALERT,
             f"muda {sil/60:.0f} min tras {spent} intentos",
         )
-    return out(Verdict.STALLED, Action.NUDGE, f"muda {sil/60:.0f} min")
+    return out(Verdict.STALLED, Action.NUDGE, f"muda desde hace {humano(sil)}")
 
 
 @dataclass
@@ -254,6 +272,8 @@ class Report:
 
     at: datetime
     findings: list[Finding] = field(default_factory=list)
+    #: Ambitos con la autonomia pausada: "*" global, o el name del source.
+    paused: dict[str, str] = field(default_factory=dict)
 
     @property
     def attention(self) -> list[Finding]:

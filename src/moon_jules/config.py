@@ -109,6 +109,9 @@ class NotifyConfig:
 @dataclass(frozen=True)
 class Config:
     api_key: str
+    #: Se expone para poder apuntar la CLI al mock (`tools/mock_jules_api.py`)
+    #: sin tocar el codigo, y para sobrevivir a un cambio de version del API.
+    base_url: str = "https://jules.googleapis.com/v1alpha"
     poll_interval_s: int = 300
     #: Peticiones de actividades en paralelo. El API no publica cuota
     #: (ADR-001), asi que el limite es autoimpuesto y conservador.
@@ -192,6 +195,7 @@ def load(path: Path | None = None, *, dotenv: Path | None = None) -> Config:
 
     jules = raw.get("jules") or {}
     api_key = resolve_secret(jules.get("api_key", ""))
+    base_url = jules.get("base_url", "https://jules.googleapis.com/v1alpha")
 
     watch = raw.get("watch") or {}
     base_policy = _policy_from(watch, Policy())
@@ -223,6 +227,7 @@ def load(path: Path | None = None, *, dotenv: Path | None = None) -> Config:
     state_path = Path(state.get("path", STATE_HOME / "state.db")).expanduser()
     return Config(
         api_key=api_key,
+        base_url=base_url,
         poll_interval_s=int(watch.get("poll_interval_s", 300)),
         max_concurrency=max(1, int(watch.get("max_concurrency", 5))),
         default_mode=default_mode,

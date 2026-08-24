@@ -16,6 +16,7 @@ documentacion publica repite:
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -48,11 +49,17 @@ class JulesClient:
         if not api_key:
             raise AuthError("credencial vacia: revisa la configuracion")
         self._max_retries = max_retries
+        self._latencies: list[float] = []
         self._http = client or httpx.AsyncClient(
             base_url=base_url,
             timeout=timeout,
             headers={"x-goog-api-key": api_key, "content-type": "application/json"},
         )
+
+    @property
+    def latencies(self) -> list[float]:
+        """Milisegundos de cada peticion, para diagnostico."""
+        return list(self._latencies)
 
     async def __aenter__(self) -> JulesClient:
         return self
@@ -108,8 +115,12 @@ class JulesClient:
         delay = 1.0
         last: Exception | None = None
         for attempt in range(self._max_retries):
+            t0 = time.monotonic()
             try:
                 resp = await self._http.request(method, path, **kw)
+                # Se mide cada intento por separado: promediar con las
+                # esperas del backoff daria una latencia inventada.
+                self._latencies.append((time.monotonic() - t0) * 1000)
                 self._raise_for(resp)
                 return resp.json() if resp.content else {}
             except (RateLimitedError, TransientError) as exc:

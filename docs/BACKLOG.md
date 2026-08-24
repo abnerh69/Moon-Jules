@@ -62,6 +62,13 @@ parecía colgada. Paralelismo acotado, caché de razones de fallo,
 lectura de nudges en bloque e indicador de progreso. Ver la nota de
 campo en ADR-001.
 
+### E15 — Diagnóstico de latencia *(entrega 07)*
+`doctor` mide la latencia real por petición y proyecta el coste de un
+ciclo. Nace de una duda que no se podía resolver: un `status` de 60
+segundos podía ser culpa del API o del cliente, y no había dato. Incluye
+`base_url` configurable, sin la cual el mock no servía para probar la
+CLI, y unifica el formato de duraciones entre columna y motivo.
+
 ## Siguiente ola
 
 ## Ola de autonomía

@@ -6,6 +6,8 @@
 
 [jules]
 api_key = "env:JULES_API_KEY"
+# Solo para pruebas contra tools/mock_jules_api.py:
+# base_url = "http://127.0.0.1:8377/v1alpha"
 # alternativa en macOS:
 # api_key = "keychain:moon-jules/jules"
 

@@ -244,14 +244,27 @@ def test_el_ack_sobrevive_al_reinicio(tmp_path):
     "segundos,esperado",
     [
         (None, "-"),
-        (25, "0m"),
-        (50 * 60, "50m"),
-        (3 * 3600, "3h"),
-        (95 * 24 * 3600, "95d"),
+        (25, "0 min"),
+        (50 * 60, "50 min"),
+        (3 * 3600, "3 h"),
+        (95 * 24 * 3600, "95 d"),
     ],
 )
 def test_las_duraciones_se_leen(segundos, esperado):
-    """Una sesión muerta hace 95 días no se reporta como `136800m`."""
-    from moon_jules.cli import humano
+    """Una sesión muerta hace 95 días no se reporta como `136800 min`."""
+    from moon_jules.detector import humano
 
-    assert humano(segundos).strip() == esperado
+    assert humano(segundos) == esperado
+
+
+def test_la_columna_y_el_motivo_hablan_igual():
+    """Salió mal una vez: la columna decía `100d` y el motivo `144270 min`.
+
+    Ambos formatos vienen ahora de la misma función, así que no pueden
+    volver a divergir.
+    """
+    from moon_jules.cli import columna
+    from moon_jules.detector import humano
+
+    for seg in (25, 3000, 10800, 8208000):
+        assert columna(seg).strip() == humano(seg).replace(" ", "")

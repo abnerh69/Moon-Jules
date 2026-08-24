@@ -303,3 +303,64 @@ def test_abrir_dos_veces_es_idempotente(tmp_path):
         store.record_nudge("sessions/a", "x", NOW)
     with Store(db) as store:
         assert store.nudge_stats()["total"] == 1
+
+
+# --------------------------------------------------------------------
+# medir antes de optimizar
+# --------------------------------------------------------------------
+
+
+def test_el_cliente_registra_la_latencia_de_cada_peticion():
+    """Sin esta medida no se distingue un API lento de un cliente torpe.
+
+    Es la duda exacta que dejó la entrega 06: 60 segundos podían ser
+    culpa del código o del servidor, y no había forma de saberlo.
+    """
+    import httpx
+
+    from moon_jules.client import JulesClient
+
+    transporte = httpx.MockTransport(
+        lambda req: httpx.Response(200, json={"sources": []})
+    )
+    cliente = JulesClient(
+        "k", client=httpx.AsyncClient(base_url="http://x/v1alpha", transport=transporte,
+                                      headers={"x-goog-api-key": "k"})
+    )
+    run(cliente.sources())
+    run(cliente.sources())
+    assert len(cliente.latencies) == 2
+    assert all(ms >= 0 for ms in cliente.latencies)
+    run(cliente.aclose())
+
+
+def test_la_url_base_es_configurable(tmp_path):
+    """Sin esto el mock no sirve para probar la CLI: BASE_URL quedaba
+    fijado como valor por defecto al definir la clase."""
+    from moon_jules.config import load
+
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        '[jules]\napi_key = "env:MJ_K"\nbase_url = "http://127.0.0.1:9/v1alpha"\n'
+    )
+    import os
+
+    os.environ["MJ_K"] = "x"
+    try:
+        assert load(cfg).base_url == "http://127.0.0.1:9/v1alpha"
+    finally:
+        del os.environ["MJ_K"]
+
+
+def test_la_url_base_tiene_default_de_produccion(tmp_path):
+    import os
+
+    from moon_jules.config import load
+
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[jules]\napi_key = "env:MJ_K2"\n')
+    os.environ["MJ_K2"] = "x"
+    try:
+        assert load(cfg).base_url == "https://jules.googleapis.com/v1alpha"
+    finally:
+        del os.environ["MJ_K2"]

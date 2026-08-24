@@ -130,11 +130,12 @@ archiva sesiones. La lista completa de lo que no hará está en
 **v0.4.0 — `watch` desatendido, triable y con freno.** Funcionan `doctor`, `sources`, `status`
 y `watch`, con detector calibrado, notificaciones nativas, logging con
 redacción de credenciales, carga desde `.env`, lock de instancia única,
-triaje de hallazgos, historial local e interruptor de autonomía. 132
+triaje de hallazgos, historial local e interruptor de autonomía. 136
 tests, incluido un barrido de secretos sobre todo el árbol.
 
-Sobre un enjambre de 538 sesiones con 9 activas, un ciclo cuesta 15
-peticiones y unos 3 segundos.
+`moon-jules doctor` mide la latencia real de tu API y proyecta el coste
+de un ciclo, que es el dato que dice si un ciclo lento es culpa del
+servidor o del cliente.
 
 `watch` ya se puede dejar corriendo en una pestaña y olvidarse: avisa por
 notificación del sistema, deja rastro en disco y no se pisa consigo mismo.
