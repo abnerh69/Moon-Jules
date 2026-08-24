@@ -136,10 +136,10 @@ ves.
 |---|---|
 | `read_only` | observa y avisa. Ninguna escritura. **Default.** |
 | `unblock_only` | además envía el prompt de continuación y aprueba planes propios |
-| `full_auto` | además asigna el siguiente issue de la cola |
 
-Moon-Jules nunca cierra issues, ni mergea PRs, ni cambia labels, ni
-archiva sesiones. La lista completa de lo que no hará está en
+Moon-Jules **no reparte trabajo**: no decide ni asigna la siguiente
+tarea. Eso lo resuelve una GitHub Action al fusionar el PR. Tampoco
+cierra issues, ni mergea PRs, ni cambia labels, ni archiva sesiones. La lista completa de lo que no hará está en
 `docs/02-MoonJules-Inception.md` §4.
 
 ## Estado
@@ -148,7 +148,7 @@ archiva sesiones. La lista completa de lo que no hará está en
 y `watch`, con detector calibrado, notificaciones nativas, logging con
 redacción de credenciales, carga desde `.env`, lock de instancia única,
 triaje de hallazgos, historial local, interruptor de autonomía y
-recalibración del umbral. 168
+recalibración del umbral. 169
 tests, incluido un barrido de secretos sobre todo el árbol.
 
 `moon-jules doctor` mide la latencia real de tu API y proyecta el coste
@@ -162,8 +162,8 @@ tus repositorios no se guarda **y tampoco se descarga**.
 `watch` ya se puede dejar corriendo en una pestaña y olvidarse: avisa por
 notificación del sistema, deja rastro en disco y no se pisa consigo mismo.
 
-Pendiente: `assign-next` e integración con GitHub Issues. Ver
-`docs/BACKLOG.md`.
+Pendiente: empaquetado, vigilancia del contrato del API y verificación
+de `sendMessage` sobre sesión terminal. Ver `docs/BACKLOG.md`.
 
 ## Documentación
 

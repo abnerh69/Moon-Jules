@@ -8,13 +8,13 @@ gitPatch, bashOutput o media sencillamente no existen.
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 from .detector import NudgeRecord
 from .models import Session, SessionState
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 #: Clave de la pausa que afecta a todos los sources.
 GLOBAL_SCOPE = "*"
@@ -24,6 +24,10 @@ GLOBAL_SCOPE = "*"
 #: la 5 es la primera que altera una tabla y necesita ejecutarse.
 MIGRATIONS: dict[int, tuple[str, ...]] = {
     5: ("ALTER TABLE sessions ADD COLUMN failure_reason TEXT",),
+    # Moon-Jules no crea sesiones: la siguiente tarea la asigna una
+    # GitHub Action al fusionar el PR. La tabla que garantizaba
+    # idempotencia al asignar ya no tiene destinatario.
+    6: ("DROP TABLE IF EXISTS assignments",),
 }
 
 SCHEMA = """
@@ -49,12 +53,6 @@ CREATE TABLE IF NOT EXISTS nudges (
     outcome     TEXT NOT NULL DEFAULT 'pending'
 );
 CREATE INDEX IF NOT EXISTS idx_nudges_session ON nudges(session, sent_at DESC);
-CREATE TABLE IF NOT EXISTS assignments (
-    issue_url   TEXT PRIMARY KEY,
-    session     TEXT NOT NULL,
-    source      TEXT NOT NULL,
-    assigned_at TEXT NOT NULL
-);
 CREATE TABLE IF NOT EXISTS notifications (
     session     TEXT NOT NULL,
     verdict     TEXT NOT NULL,
@@ -279,39 +277,6 @@ class Store:
             "            ORDER BY sent_at DESC LIMIT 1)",
             (outcome, _iso(now), name),
         )
-
-    # ---------- asignaciones e idempotencia ----------
-
-    def already_assigned(self, issue_url: str) -> bool:
-        return (
-            self.db.execute(
-                "SELECT 1 FROM assignments WHERE issue_url = ?", (issue_url,)
-            ).fetchone()
-            is not None
-        )
-
-    def record_assignment(self, issue_url: str, session: str, source: str, now: datetime) -> bool:
-        """Devuelve False si el issue ya estaba asignado. Idempotente."""
-        try:
-            self.db.execute(
-                "INSERT INTO assignments(issue_url, session, source, assigned_at) "
-                "VALUES (?,?,?,?)",
-                (issue_url, session, source, _iso(now)),
-            )
-            return True
-        except sqlite3.IntegrityError:
-            return False
-
-    def sessions_created_since(self, since: datetime) -> int:
-        """Consumo del presupuesto diario. Ventana movil de 24 h. ADR-005."""
-        row = self.db.execute(
-            "SELECT COUNT(*) AS n FROM assignments WHERE assigned_at >= ?",
-            (_iso(since),),
-        ).fetchone()
-        return int(row["n"]) if row else 0
-
-    def daily_budget_left(self, usable: int, now: datetime) -> int:
-        return max(0, usable - self.sessions_created_since(now - timedelta(hours=24)))
 
     # ---------- pausa de autonomia ----------
 

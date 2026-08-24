@@ -64,8 +64,9 @@ bienintencionado borra.
 ## La NO list, en corto
 
 Nada de UI web. Nada de servicio en la nube. Nada de multi-usuario. Nada
-de otros agentes. Nada de plugins. No se cierran issues, no se mergean
-PRs, no se cambian labels. **No se archivan, borran ni pausan sesiones
+de otros agentes. Nada de plugins. **No se decide ni se asigna la
+siguiente tarea**: eso lo hace una GitHub Action al fusionar el PR. No
+se cierran issues, no se mergean PRs, no se cambian labels. **No se archivan, borran ni pausan sesiones
 por decisión propia**, aunque el API lo permita. No se guarda contenido
 de código: ni `gitPatch`, ni `bashOutput`, ni `media` — el esquema
 SQLite no tiene columnas para eso y así debe seguir.

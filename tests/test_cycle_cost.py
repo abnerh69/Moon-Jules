@@ -237,7 +237,7 @@ def test_un_ciclo_sin_progreso_no_falla(tmp_path):
 # --------------------------------------------------------------------
 
 
-def test_la_migracion_v4_v5_conserva_los_datos(tmp_path):
+def test_la_migracion_desde_v4_conserva_los_datos(tmp_path):
     import sqlite3
 
     db = tmp_path / "state.db"
@@ -258,9 +258,32 @@ def test_la_migracion_v4_v5_conserva_los_datos(tmp_path):
             "SELECT value FROM meta WHERE key='schema_version'"
         ).fetchone()["value"]
         filas = store.db.execute("SELECT COUNT(*) c FROM sessions").fetchone()["c"]
-        assert version == "5"
+        assert version == "6"
         assert filas == 1
         assert store.failure_reasons() == {}
+
+
+def test_la_tabla_de_asignaciones_se_retira(tmp_path):
+    """Moon-Jules no crea sesiones: esa tabla ya no tiene destinatario."""
+    import sqlite3
+
+    db = tmp_path / "state.db"
+    c = sqlite3.connect(db)
+    c.executescript(
+        "CREATE TABLE assignments(issue_url TEXT PRIMARY KEY, session TEXT NOT NULL,"
+        " source TEXT NOT NULL, assigned_at TEXT NOT NULL);"
+        "CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);"
+        "INSERT INTO meta VALUES('schema_version','5');"
+        "INSERT INTO assignments VALUES('u','s','src','x');"
+    )
+    c.commit()
+    c.close()
+    with Store(db) as store:
+        tablas = {
+            r["name"]
+            for r in store.db.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+    assert "assignments" not in tablas
 
 
 def test_una_base_nueva_no_intenta_migrar(tmp_path):
@@ -268,7 +291,7 @@ def test_una_base_nueva_no_intenta_migrar(tmp_path):
     with Store(tmp_path / "nueva.db") as store:
         assert store.db.execute(
             "SELECT value FROM meta WHERE key='schema_version'"
-        ).fetchone()["value"] == "5"
+        ).fetchone()["value"] == "6"
 
 
 def test_abrir_dos_veces_es_idempotente(tmp_path):

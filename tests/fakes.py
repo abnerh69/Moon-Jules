@@ -37,7 +37,6 @@ class FakeJules:
         self.requests = 0
         self.sent: list[tuple[str, str]] = []
         self.approved: list[str] = []
-        self.created: list[dict] = []
         #: (sesión, cursor) de cada consulta de actividades.
         self.activity_calls: list[tuple[str, str | None]] = []
         self.session_gets: list[str] = []
@@ -106,8 +105,3 @@ class FakeJules:
     async def approve_plan(self, name: str) -> None:
         await self._viaje()
         self.approved.append(name)
-
-    async def create_session(self, prompt: str, **kw: object) -> Session:
-        await self._viaje()
-        self.created.append({"prompt": prompt, **kw})
-        return self._sessions[0]

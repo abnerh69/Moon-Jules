@@ -18,13 +18,12 @@ bootstrap_lookback_s = 86400  # ventana de la primera consulta por sesion
 full_refresh_every = 12       # cada cuantos ciclos se repagina todo
 stall_after_s   = 900      # ADR-002: N = 15 min, calibrado en el Spike 01
 nudge_verify_s  = 600      # canario del prompt magico
-default_mode    = "read_only"   # ADR-005: la autonomia se gana, no se asume
+default_mode    = "read_only"   # read_only | unblock_only. ADR-005.
 
 [budgets]
-# Topes del plan Jules in Pro.
-max_active_sessions  = 15
-daily_session_budget = 100
-reserve_for_manual   = 20   # cuota que Moon-Jules nunca toca
+# Tope de concurrencia del plan. No es un limite de Moon-Jules —no crea
+# sesiones—, sino contexto: explica por que una sesion sigue en QUEUED.
+max_active_sessions = 15
 
 [notify]
 enabled    = false   # requiere osascript (macOS) o notify-send (Linux)

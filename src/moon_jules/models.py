@@ -46,9 +46,24 @@ class SessionState(StrEnum):
 
 
 class AutonomyMode(StrEnum):
+    """Dos modos, no tres.
+
+    El tercero (`full_auto`) existia para asignar la siguiente tarea de
+    la cola. Esa decision no es de Moon-Jules: la resuelve una GitHub
+    Action al fusionar el PR. Sin ese acto, `full_auto` no hacia nada
+    que `unblock_only` no hiciera ya, y un modo que miente en el config
+    es peor que no tenerlo. Ver la enmienda de ADR-005.
+    """
+
     READ_ONLY = "read_only"
     UNBLOCK_ONLY = "unblock_only"
-    FULL_AUTO = "full_auto"
+
+    @classmethod
+    def parse(cls, raw: str) -> AutonomyMode:
+        if raw == "full_auto":
+            # Se acepta para no romper configuraciones existentes.
+            return cls.UNBLOCK_ONLY
+        return cls(raw)
 
 
 def parse_ts(raw: str | None) -> datetime | None:

@@ -1,12 +1,13 @@
 # Moon-Jules — Inception
 
 ```meta
-Versión:    v3.0
+Versión:    v3.1
 Fecha:      2026-08-24
 Estado:     Borrador para firma
 Reemplaza:  v2.0 (2026-05-19)
-Motivo:     Incorpora las mediciones del Spike 01 y fija la identidad
-            definitiva del proyecto. La NO list y los trade-offs
+Motivo:     v3.0 incorporó las mediciones del Spike 01 y fijó la
+            identidad. v3.1 recorta el alcance: asignar la siguiente
+            tarea no es trabajo de Moon-Jules. La NO list y los trade-offs
             sobreviven intactos; cambian escala, umbrales y contrato
             del API.
 Fuentes:    docs/01-MoonJules-Problem-Brief.md (v3.0)
@@ -52,8 +53,8 @@ que sí lo necesitan**.
     cuáles colgados — sin abrir un solo navegador.**
   - **Reactiva sesiones detenidas con el prompt correcto, sin intervención
     humana, y solo te avisa cuando no puede sola.**
-  - **Alimenta tus repos con la siguiente tarea apenas terminan la
-    anterior, manteniendo el flujo del enjambre lleno.**
+  - **Te dice si Jules dejó de obedecer el prompt que lo desatasca, en
+    vez de descubrirlo cuando ya llevas media jornada perdida.**
 
 Lo que no cabe en esa caja queda fuera del producto principal: ni
 dashboards web, ni Slack, ni métricas históricas elaboradas.
@@ -97,6 +98,14 @@ cambios de fondo; se añaden dos nacidas del spike.
     —una API key revocada dice literalmente "API keys are not supported by
     this API"— y una alerta que repita ese texto mandaría al arquitecto a
     depurar el problema equivocado.
+
+13. *(nueva, 2026-08-24, v3.1)* **NO va a decidir ni asignar la
+    siguiente tarea.** Esa decisión ya está resuelta: una GitHub Action
+    se dispara al fusionar el PR, cierra el issue completado y etiqueta
+    el siguiente con `jules`, que es el disparador nativo del agente.
+    Moon-Jules **monitorea y avisa**; no alimenta la cola. Esto retira
+    del proyecto su acción más consecuente y elimina de raíz el
+    conflicto con el NO 6 sobre etiquetas.
 
 Cuando una sesión con cualquier LLM intente derivar hacia algo de esta
 lista, el redirector es esta NO list, literalmente.
@@ -183,8 +192,11 @@ Decisiones gruesas, cada una destinada a una ADR:
 - **Configuración: un solo archivo TOML**, con la credencial **por
   referencia** (`env:JULES_API_KEY` o keychain), nunca literal.
 - **Concurrencia interna: `asyncio` con `httpx`**, sin threads explícitos.
-- **Autonomía graduable por source**: *read-only*, *unblock-only*,
-  *full-auto*.
+- **Autonomía graduable por source**: *read-only* y *unblock-only*.
+  Había un tercer modo, *full-auto*, cuya única acción distintiva era
+  asignar la siguiente tarea; sin ella no hacía nada que *unblock-only*
+  no hiciera ya, y un modo que miente en el config es peor que no
+  tenerlo. Se sigue aceptando en configuraciones existentes.
 
 ### Escalera de recuperación
 
@@ -199,7 +211,7 @@ Derivada del enum de estados verificado y de las firmas observadas:
 | IN_PROGRESS | silencio del agente > N | `sendMessage`, presupuesto acotado, luego alerta |
 | PAUSED | silencio > N | alerta (el API no expone resume) |
 | FAILED | inmediata, con `reason` | alerta; en full-auto, sesión nueva con reintento acotado |
-| COMPLETED con cola pendiente | inmediata | full-auto: asignar siguiente issue |
+| COMPLETED | inmediata | nada: la siguiente tarea la asigna la Action |
 
 **Verificación del nudge**: si tras enviar el prompt no aparece un evento
 del agente en 10 minutos, el nudge falló y se escala a alerta en vez de

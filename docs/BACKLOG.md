@@ -90,22 +90,15 @@ Python declarada.
 
 ## Siguiente ola
 
+## Retirado
+
+### E06 y E07 — Cola de issues y `assign-next` *(descartadas, entrega 12)*
+Moon-Jules no decide ni asigna la siguiente tarea: lo resuelve una
+GitHub Action al fusionar el PR. Se retiran del alcance junto con el
+modo `full_auto`, el presupuesto diario y la tabla `assignments`. Ver la
+enmienda de ADR-005 y el NO 13 del Inception.
+
 ## Ola de autonomía
-
-### E06 — Cola de GitHub Issues
-Lectura de issues abiertos por repositorio vía `gh` (fallback a API
-REST). Mapeo repo↔source. Ordenación de la cola. **No toca labels**
-(NO 6).
-*Depende de: E01. Toca: `github.py`.*
-
-### E07 — `moon-jules assign-next`
-Crea sesión por API para el siguiente issue de la cola. Idempotencia vía
-la tabla `assignments`. Respeta los tres presupuestos de ADR-005: 15
-concurrentes, 100/día menos reserva, y verificación de que el source
-está en `full_auto`.
-*Depende de: E06. Riesgo alto: es la acción más consecuente del sistema.*
-
-## Ola de robustez
 
 ### E09 — `moon-jules calibrate` *(entrega 11)*
 Reejecuta el análisis del Spike 01 sobre el histórico actual y dice si N

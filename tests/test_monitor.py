@@ -137,7 +137,7 @@ def test_sesiones_terminales_no_gastan_requests(tmp_path):
     """Sobre COMPLETED el reloj estaria congelado igual: no se consultan."""
     s = sess(SessionState.COMPLETED, update_time=ago(minutes=5))
     client = FakeJules([s], {})
-    cfg = config(AutonomyMode.FULL_AUTO, tmp_path)
+    cfg = config(AutonomyMode.UNBLOCK_ONLY, tmp_path)
     with Store(cfg.state_path) as store:
         report = run(Monitor(client, cfg, store).cycle())
     assert client.activity_calls == []
@@ -150,7 +150,7 @@ def test_failed_recupera_la_razon_y_no_recibe_escritura(tmp_path):
         [s],
         {s.name: [act("sessionFailed", "agent", ago(minutes=5), "Unable to install deps")]},
     )
-    cfg = config(AutonomyMode.FULL_AUTO, tmp_path)
+    cfg = config(AutonomyMode.UNBLOCK_ONLY, tmp_path)
     with Store(cfg.state_path) as store:
         report = run(Monitor(client, cfg, store).cycle(execute=True))
     assert "Unable to install deps" in report.findings[0].reason

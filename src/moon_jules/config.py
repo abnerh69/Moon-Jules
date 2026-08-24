@@ -89,15 +89,15 @@ class SourceConfig:
 
 @dataclass(frozen=True)
 class Budgets:
-    """Topes del plan Jules in Pro. ADR-005."""
+    """Topes del plan Jules in Pro. ADR-005.
+
+    Solo queda el de concurrencia, y no como limite propio sino como
+    contexto: explica por que una sesion lleva rato en QUEUED. Los
+    presupuestos de creacion desaparecieron con `assign-next`, que nunca
+    fue trabajo de Moon-Jules.
+    """
 
     max_active_sessions: int = 15
-    daily_session_budget: int = 100
-    reserve_for_manual: int = 20
-
-    @property
-    def usable_daily(self) -> int:
-        return max(0, self.daily_session_budget - self.reserve_for_manual)
 
 
 @dataclass(frozen=True)
@@ -207,20 +207,16 @@ def load(path: Path | None = None, *, dotenv: Path | None = None) -> Config:
 
     watch = raw.get("watch") or {}
     base_policy = _policy_from(watch, Policy())
-    default_mode = AutonomyMode(watch.get("default_mode", "read_only"))
+    default_mode = AutonomyMode.parse(watch.get("default_mode", "read_only"))
 
     b = raw.get("budgets") or {}
-    budgets = Budgets(
-        max_active_sessions=int(b.get("max_active_sessions", 15)),
-        daily_session_budget=int(b.get("daily_session_budget", 100)),
-        reserve_for_manual=int(b.get("reserve_for_manual", 20)),
-    )
+    budgets = Budgets(max_active_sessions=int(b.get("max_active_sessions", 15)))
 
     sources: dict[str, SourceConfig] = {}
     for name, sraw in (raw.get("sources") or {}).items():
         sources[name] = SourceConfig(
             name=name,
-            mode=AutonomyMode(sraw.get("mode", default_mode.value)),
+            mode=AutonomyMode.parse(sraw.get("mode", default_mode.value)),
             starting_branch=sraw.get("starting_branch", "main"),
             policy=_policy_from(sraw, base_policy),
         )

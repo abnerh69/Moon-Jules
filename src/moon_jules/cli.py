@@ -395,8 +395,7 @@ async def cmd_doctor(cfg: Config, args: argparse.Namespace) -> int:
     print(f"intervalo   {cfg.poll_interval_s}s")
     print(f"umbral N    {cfg.policy.stall_after_s}s")
     print(f"modo        {cfg.default_mode.value}")
-    print(f"topes       {cfg.budgets.max_active_sessions} concurrentes, "
-          f"{cfg.budgets.usable_daily} sesiones/dia utilizables")
+    print(f"topes       {cfg.budgets.max_active_sessions} sesiones concurrentes")
     print(f"estado      {cfg.state_path}")
     with Store(cfg.state_path) as store:
         pausas = store.active_pauses(now())

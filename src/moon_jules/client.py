@@ -295,29 +295,6 @@ class JulesClient:
     async def approve_plan(self, name: str) -> None:
         await self._request("POST", f"/{_norm(name)}:approvePlan", json={})
 
-    async def create_session(
-        self,
-        prompt: str,
-        *,
-        source: str,
-        starting_branch: str,
-        title: str | None = None,
-        auto_pr: bool = True,
-    ) -> Session:
-        body: dict[str, Any] = {
-            "prompt": prompt,
-            "sourceContext": {
-                "source": source,
-                "githubRepoContext": {"startingBranch": starting_branch},
-            },
-            "requirePlanApproval": False,
-        }
-        if title:
-            body["title"] = title
-        if auto_pr:
-            body["automationMode"] = "AUTO_CREATE_PR"
-        return Session.from_api(await self._request("POST", "/sessions", json=body))
-
 
 def _norm(name: str) -> str:
     return name if name.startswith("sessions/") else f"sessions/{name}"

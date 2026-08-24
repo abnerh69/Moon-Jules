@@ -61,17 +61,13 @@ class Action(StrEnum):
     NONE = "none"
     NUDGE = "nudge"
     APPROVE_PLAN = "approve_plan"
-    ASSIGN_NEXT = "assign_next"
     ALERT = "alert"
 
 
 #: Acciones que escriben en el workspace de Jules, por modo de autonomia.
 ALLOWED: dict[AutonomyMode, frozenset[Action]] = {
     AutonomyMode.READ_ONLY: frozenset({Action.NONE, Action.ALERT}),
-    AutonomyMode.UNBLOCK_ONLY: frozenset(
-        {Action.NONE, Action.ALERT, Action.NUDGE, Action.APPROVE_PLAN}
-    ),
-    AutonomyMode.FULL_AUTO: frozenset(Action),
+    AutonomyMode.UNBLOCK_ONLY: frozenset(Action),
 }
 
 
@@ -173,13 +169,11 @@ def assess(
     policy: Policy | None = None,
     mode: AutonomyMode = AutonomyMode.READ_ONLY,
     nudge: NudgeRecord | None = None,
-    has_pending_queue: bool = False,
     owned: bool = False,
 ) -> Finding:
     """Dictamina el estado de una sesion y la accion que corresponde.
 
     `owned`: la sesion la creo Moon-Jules (habilita aprobar su plan).
-    `has_pending_queue`: el source tiene issues sin asignar.
     """
     p = policy or Policy()
     sil = fresh.silence_s(now)
@@ -197,8 +191,8 @@ def assess(
         return out(Verdict.FAILED, Action.ALERT, f"sesion fallida: {why}")
 
     if st is SessionState.COMPLETED:
-        if has_pending_queue:
-            return out(Verdict.DONE, Action.ASSIGN_NEXT, "completada con cola pendiente")
+        # Que haya trabajo pendiente detras no es asunto de Moon-Jules:
+        # la siguiente tarea la asigna una GitHub Action al fusionar el PR.
         return out(Verdict.DONE, Action.NONE, "completada")
 
     if st is SessionState.AWAITING_PLAN_APPROVAL:

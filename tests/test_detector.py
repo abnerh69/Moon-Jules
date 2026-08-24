@@ -160,7 +160,7 @@ def test_planning_tolera_el_doble():
 def test_paused_muda_solo_alerta_porque_no_hay_resume():
     """Seis PAUSED con cola progressUpdated: la colgada silenciosa."""
     f = Freshness(ago(days=97), "progressUpdated")
-    r = check(SessionState.PAUSED, f, mode=AutonomyMode.FULL_AUTO)
+    r = check(SessionState.PAUSED, f, mode=AutonomyMode.UNBLOCK_ONLY)
     assert r.verdict is Verdict.PAUSED_STALE
     assert r.action is Action.ALERT
 
@@ -173,7 +173,7 @@ def test_paused_reciente_no_alarma():
 def test_failed_nunca_recibe_escritura():
     """sendMessage sobre terminal no esta verificado: solo se alerta."""
     s = sess(SessionState.FAILED).with_failure("Unable to install dependencies")
-    r = assess(s, Freshness(), NOW, mode=AutonomyMode.FULL_AUTO)
+    r = assess(s, Freshness(), NOW, mode=AutonomyMode.UNBLOCK_ONLY)
     assert r.verdict is Verdict.FAILED
     assert r.action is Action.ALERT
     assert "dependencies" in r.reason
@@ -267,27 +267,22 @@ def test_read_only_no_escribe_nunca():
     assert r.downgraded_from is Action.NUDGE
 
 
-def test_unblock_only_no_asigna():
+def test_una_sesion_completada_no_dispara_ninguna_accion():
+    """Que haya trabajo pendiente detrás no es asunto de Moon-Jules: la
+    siguiente tarea la asigna una GitHub Action al fusionar el PR."""
     r = assess(
         sess(SessionState.COMPLETED),
         Freshness(ago(minutes=5), "sessionCompleted"),
         NOW,
         mode=AutonomyMode.UNBLOCK_ONLY,
-        has_pending_queue=True,
     )
-    assert r.action is Action.ALERT
-    assert r.downgraded_from is Action.ASSIGN_NEXT
+    assert r.action is Action.NONE
+    assert not r.needs_attention
 
 
-def test_full_auto_asigna_la_siguiente():
-    r = assess(
-        sess(SessionState.COMPLETED),
-        Freshness(ago(minutes=5), "sessionCompleted"),
-        NOW,
-        mode=AutonomyMode.FULL_AUTO,
-        has_pending_queue=True,
-    )
-    assert r.action is Action.ASSIGN_NEXT
+def test_full_auto_se_acepta_y_equivale_a_unblock_only():
+    """Se admite en configs existentes, pero ya no significa nada extra."""
+    assert AutonomyMode.parse("full_auto") is AutonomyMode.UNBLOCK_ONLY
 
 
 def test_completada_sin_cola_no_hace_nada():
@@ -295,8 +290,7 @@ def test_completada_sin_cola_no_hace_nada():
         sess(SessionState.COMPLETED),
         Freshness(ago(minutes=5), "sessionCompleted"),
         NOW,
-        mode=AutonomyMode.FULL_AUTO,
-        has_pending_queue=False,
+        mode=AutonomyMode.UNBLOCK_ONLY,
     )
     assert r.action is Action.NONE
     assert not r.needs_attention
