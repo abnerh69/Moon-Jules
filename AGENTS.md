@@ -83,9 +83,16 @@ runtime.
 
 ```bash
 python -m pytest -q
-python -m ruff check src tests
+python -m ruff check src tests tools
 python -m mypy src
 ```
+
+**El intérprete en el que corres no es el del arquitecto.** El proyecto
+declara `>=3.11` y se opera en macOS. Ya pasó una vez: un salto de línea
+dentro de un f-string es válido desde 3.12 y error de sintaxis en 3.11,
+la suite pasaba y el módulo no habría importado en su máquina.
+`tests/test_compat.py` lo vigila; no lo desactives ni subas
+`requires-python` para silenciarlo.
 
 **Tests.** El detector (`src/moon_jules/detector.py`) es el núcleo
 calibrado: cualquier cambio ahí necesita un test que demuestre el caso

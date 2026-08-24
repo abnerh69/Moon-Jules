@@ -10,7 +10,7 @@ import math
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -22,7 +22,7 @@ ACT_TYPES = ("planGenerated", "planApproved", "userMessaged", "agentMessaged",
 
 
 def utcnow():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def iso(dt):
@@ -56,7 +56,9 @@ def fnum(x, w=8):
 class Recorder:
     def __init__(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.f = open(path, "a", buffering=1, encoding="utf-8")
+        # El fichero queda abierto a proposito: el grabador escribe
+        # durante toda la observacion, que puede durar horas.
+        self.f = open(path, "a", buffering=1, encoding="utf-8")  # noqa: SIM115
 
     def write(self, obj):
         self.f.write(json.dumps(obj, ensure_ascii=False) + "\n")
@@ -208,7 +210,9 @@ async def cmd_observe(args):
 def cmd_analyze(args):
     path = Path(args.out) / "observaciones.jsonl"
     acts, stal, final, trans = {}, {}, {}, {}
-    for line in open(path, encoding="utf-8"):
+    with open(path, encoding="utf-8") as fh:
+        lineas = list(fh)
+    for line in lineas:
         r = json.loads(line)
         k = r.get("kind")
         if k == "activity":
@@ -224,7 +228,7 @@ def cmd_analyze(args):
         a = sorted(acts.get(s, {}).values(), key=lambda x: x.get("createTime") or "")
         ag = [parse_ts(x["createTime"]) for x in a
               if x.get("originator") == "agent" and x.get("createTime")]
-        gaps = [(b - c).total_seconds() for c, b in zip(ag, ag[1:])]
+        gaps = [(b - c).total_seconds() for c, b in zip(ag, ag[1:], strict=False)]
         st = stal.get(s, [])
         rows.append({"sesion": s, "final": final.get(s, "?"), "acts": len(a),
                      "agente": len(ag), "gap_med": qtile(gaps, 50),
@@ -300,7 +304,7 @@ async def cmd_backfill(args):
                 continue
             ag = [parse_ts(a["createTime"]) for a in acts
                   if a.get("originator") == "agent" and a.get("createTime")]
-            gaps = [(b - c).total_seconds() for c, b in zip(ag, ag[1:])]
+            gaps = [(b - c).total_seconds() for c, b in zip(ag, ag[1:], strict=False)]
             t0, t1 = parse_ts(acts[0]["createTime"]), parse_ts(acts[-1]["createTime"])
             tail = act_type(acts[-1])
             # cola: del ultimo evento del agente al ultimo latido de la sesion
@@ -336,7 +340,7 @@ async def cmd_backfill(args):
         if okg:
             p50, p90, p99 = qtile(okg, 50), qtile(okg, 90), qtile(okg, 99)
             mx = max(okg)
-            print(f"\nsesiones COMPLETED — distribucion de huecos entre eventos del agente")
+            print("\nsesiones COMPLETED — distribucion de huecos entre eventos del agente")
             print(f"  n={len(okg)}  p50={p50:.0f}s  p90={p90:.0f}s  p99={p99:.0f}s  "
                   f"max={mx:.0f}s ({mx/60:.1f} min)")
             for mult, etq in ((1.5, "agresivo"), (2.0, "equilibrado"), (3.0, "conservador")):
@@ -345,14 +349,14 @@ async def cmd_backfill(args):
                 print(f"  N = max x{mult} = {n/60:6.1f} min -> {etq:12} "
                        f"huecos sanos por encima: {fp}")
         # cola de silencio: separa terminales de estancadas
-        print(f"\nsilencio final (ultimo evento del agente -> updateTime), por estado:")
+        print("\nsilencio final (ultimo evento del agente -> updateTime), por estado:")
         for st in wanted:
             v = [r["silencio_final_s"] for r in by.get(st, [])
                  if r["silencio_final_s"] is not None]
             if v:
                 print(f"  {st:<24} n={len(v):>3}  p50={qtile(v,50):9.1f}s  "
                       f"max={max(v):11.1f}s")
-        print(f"\ntipo del ultimo evento, por estado:")
+        print("\ntipo del ultimo evento, por estado:")
         for st in wanted:
             tt = {}
             for r in by.get(st, []):
@@ -601,8 +605,10 @@ def main():
     if args.cmd == "analyze":
         cmd_analyze(args)
     else:
-        asyncio.run({"snapshot": cmd_snapshot, "observe": cmd_observe, "backfill": cmd_backfill, "nudges": cmd_nudges,
-                     "probe": cmd_probe}[args.cmd](args))
+        comandos = {"snapshot": cmd_snapshot, "observe": cmd_observe,
+                    "backfill": cmd_backfill, "nudges": cmd_nudges,
+                    "probe": cmd_probe}
+        asyncio.run(comandos[args.cmd](args))
 
 
 if __name__ == "__main__":

@@ -479,3 +479,24 @@ def test_el_refresco_completo_recupera_una_sesion_revivida(tmp_path):
         completo = run(mon.cycle(full=True))
     assert completo.findings[0].session.state is SessionState.IN_PROGRESS
     assert completo.attention, "revivió y lleva 5 h muda: debe alertar"
+
+
+def test_el_cliente_expone_si_la_mascara_sigue_activa():
+    """`doctor` debe poder decirlo: si el API la rechazó, el ahorro no aplicó
+    y el usuario solo se enteraría leyendo el log."""
+    import httpx
+
+    from moon_jules.client import JulesClient
+
+    def rechaza(req: httpx.Request) -> httpx.Response:
+        if "fields" in req.url.params:
+            return httpx.Response(400, json={"error": {
+                "code": 400, "status": "INVALID_ARGUMENT", "message": "no"}})
+        return httpx.Response(200, json={"activities": []})
+
+    c = JulesClient("k", client=httpx.AsyncClient(
+        base_url="http://x/v1alpha", transport=httpx.MockTransport(rechaza)))
+    assert c.partial_response is True
+    run(c.activities("sessions/1"))
+    assert c.partial_response is False
+    run(c.aclose())

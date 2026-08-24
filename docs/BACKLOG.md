@@ -80,6 +80,14 @@ estar en repaginar un historial que solo crece. Ahora se pide una página
 de novedades y se releen solo las sesiones en curso, con refresco
 completo periódico. Tercera nota de campo en ADR-001.
 
+### E18 — Diagnóstico fiel y compatibilidad *(entrega 10)*
+`doctor` proyectaba el coste con el modelo anterior al incremental, y
+medía la latencia solo sobre páginas de sesiones —que nunca llevaron
+artefactos—, así que no decía nada del ahorro real. Ahora mide también
+una consulta de actividades y reporta si la máscara de campos sigue
+activa. Incluye un gate de compatibilidad con la versión mínima de
+Python declarada.
+
 ## Siguiente ola
 
 ## Ola de autonomía

@@ -130,7 +130,7 @@ archiva sesiones. La lista completa de lo que no hará está en
 **v0.4.0 — `watch` desatendido, triable y con freno.** Funcionan `doctor`, `sources`, `status`
 y `watch`, con detector calibrado, notificaciones nativas, logging con
 redacción de credenciales, carga desde `.env`, lock de instancia única,
-triaje de hallazgos, historial local e interruptor de autonomía. 142
+triaje de hallazgos, historial local e interruptor de autonomía. 146
 tests, incluido un barrido de secretos sobre todo el árbol.
 
 `moon-jules doctor` mide la latencia real de tu API y proyecta el coste

@@ -404,39 +404,71 @@ async def cmd_doctor(cfg: Config, args: argparse.Namespace) -> int:
             donde = "global" if scope == GLOBAL_SCOPE else scope
             hasta = f" hasta {row['until'][:16]}" if row["until"] else " indefinida"
             print(f"PAUSA       {donde}{hasta}  {row['reason'] or ''}")
+    with Store(cfg.state_path) as store:
+        marca = store.newest_created()
+
     async with JulesClient(cfg.api_key, base_url=cfg.base_url) as c:
         prog = Progress()
         prog.step("consultando el API")
         src = await c.sources()
         ses = await c.sessions()
-        prog.done()
+        lat_listado = list(c.latencies)
         activas = [s for s in ses if s.state not in TERMINAL]
         paginas = max(1, -(-len(ses) // 100))
+
+        # Las paginas de sesiones nunca llevaron artefactos: medir solo
+        # ahi no dice nada del coste real, que estaba en las actividades.
+        # Se mide una de verdad para que el numero sea representativo.
+        lat_act: list[float] = []
+        if activas:
+            prog.step("midiendo una consulta de actividades")
+            corte = now() - timedelta(seconds=cfg.bootstrap_lookback_s)
+            antes = len(c.latencies)
+            await c.activities(
+                activas[0].name, after=corte.isoformat().replace("+00:00", "Z")
+            )
+            lat_act = c.latencies[antes:]
+        prog.done()
+        parcial = c.partial_response
+
         print(f"\nAPI         OK: {len(src)} sources, {len(ses)} sesiones, "
               f"{len(activas)} no terminales")
         if len(activas) >= cfg.budgets.max_active_sessions:
             print(f"aviso       tope de concurrencia alcanzado ({len(activas)}/"
                   f"{cfg.budgets.max_active_sessions})")
+        print(f"parcial     {'activa' if parcial else 'RECHAZADA por el API'}"
+              f"  (no descarga diffs ni capturas)")
+        modo_listado = (
+            "incremental" if marca else "primer arranque: el proximo ciclo paginara todo"
+        )
+        print(f"listado     {modo_listado}")
 
-        # Sin esta medida no hay forma de saber si un ciclo lento es
-        # culpa del API o del cliente, que es justo la duda que provoco
-        # la entrega 06.
-        lat = sorted(c.latencies)
-        if lat:
-            p50 = lat[len(lat) // 2] / 1000
-            p90 = lat[min(len(lat) - 1, int(len(lat) * 0.9))] / 1000
-            print(f"\nlatencia    {len(lat)} peticiones: "
-                  f"p50 {p50:.2f}s  p90 {p90:.2f}s  max {max(lat)/1000:.2f}s")
-            reqs = paginas + len(activas)
-            serie = paginas * p50
-            paralelo = -(-len(activas) // cfg.max_concurrency) * p50
-            print(f"ciclo       {reqs} peticiones "
-                  f"({paginas} paginas + {len(activas)} activas)")
-            print(f"            ~{serie + paralelo:.0f}s con paralelismo "
-                  f"{cfg.max_concurrency}")
-            if p50 > 1.0:
-                print("            el API responde lento; el suelo son las "
-                      "paginas, que van en serie")
+        def resumen(v: list[float], etq: str) -> float | None:
+            if not v:
+                return None
+            o = sorted(v)
+            p50 = o[len(o) // 2] / 1000
+            p90 = o[min(len(o) - 1, int(len(o) * 0.9))] / 1000
+            print(f"            {etq:<12} p50 {p50:.2f}s  p90 {p90:.2f}s  "
+                  f"({len(o)} peticiones)")
+            return p50
+
+        print("\nlatencia")
+        t_lista = resumen(lat_listado, "listado") or 0.0
+        t_act = resumen(lat_act, "actividades") or t_lista
+
+        n = len(activas)
+        tandas = -(-n // cfg.max_concurrency) if n else 0
+        estable = t_lista + tandas * t_lista + tandas * t_act
+        completo = paginas * t_lista + tandas * t_act
+        print(f"\nciclo       estable    ~{estable:.0f}s  "
+              f"(1 pagina + {n} relecturas + {n} actividades)")
+        print(f"            completo   ~{completo:.0f}s  "
+              f"({paginas} paginas + {n} actividades), cada "
+              f"{cfg.full_refresh_every} ciclos")
+        if not parcial:
+            print("\naviso       el API rechazo la mascara de campos: cada "
+                  "actividad\n            arrastra diffs y capturas. Revisa el log.")
     return 0
 
 

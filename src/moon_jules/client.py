@@ -83,6 +83,11 @@ class JulesClient:
         )
 
     @property
+    def partial_response(self) -> bool:
+        """False si el API rechazo la mascara de campos y se degrado."""
+        return self._partial
+
+    @property
     def latencies(self) -> list[float]:
         """Milisegundos de cada peticion, para diagnostico."""
         return list(self._latencies)
