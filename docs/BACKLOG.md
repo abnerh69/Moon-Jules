@@ -107,11 +107,13 @@ está en `full_auto`.
 
 ## Ola de robustez
 
-### E09 — `moon-jules calibrate`
-Reejecuta el análisis del Spike 01 sobre el histórico y reporta si N
-sigue en la rodilla de la curva. La calibración caduca si Jules cambia
-su cadencia; esto lo detecta.
-*Depende de: E01, E05. Base: `tools/spike_cadence.py`.*
+### E09 — `moon-jules calibrate` *(entrega 11)*
+Reejecuta el análisis del Spike 01 sobre el histórico actual y dice si N
+sigue siendo la elección correcta. Usa los rescates manuales del
+arquitecto como etiqueta, igual que el spike. El veredicto no inventa
+una función de puntuación: busca si algún candidato **domina** al actual
+—mejor en un eje sin empeorar el otro—, y a igualdad gana el que detecta
+antes.
 
 ### E10 — Vigilancia del contrato del API
 Chequeo periódico de la `revision` del discovery doc. Si cambia, avisa.

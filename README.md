@@ -96,6 +96,23 @@ de actuar. El estado pausado se anuncia en cada salida — una pausa
 silenciosa es peor que no tenerla. Con `--for` se levanta sola, que es
 el remedio contra el fallo real: olvidarse de reanudar.
 
+### ¿Sigue siendo correcto el umbral?
+
+```bash
+moon-jules calibrate                    # analiza las 70 sesiones más recientes
+moon-jules calibrate --sessions 150
+moon-jules calibrate --json cal.json    # guarda los datos crudos
+```
+
+Reejecuta sobre tu histórico el análisis que fijó N = 15 min, usando tus
+propios rescates manuales como etiqueta: cada vez que escribiste
+"Completa la tarea" dejaste constancia del instante en que decidiste que
+una sesión estaba colgada.
+
+La calibración caduca. Si Jules cambia su cadencia, N deja de valer y el
+detector empieza a fallar en silencio. Conviene reejecutarlo cada
+tantas semanas, o cuando `history` muestre nudges sin respuesta.
+
 ### Historial
 
 ```bash
@@ -130,7 +147,8 @@ archiva sesiones. La lista completa de lo que no hará está en
 **v0.4.0 — `watch` desatendido, triable y con freno.** Funcionan `doctor`, `sources`, `status`
 y `watch`, con detector calibrado, notificaciones nativas, logging con
 redacción de credenciales, carga desde `.env`, lock de instancia única,
-triaje de hallazgos, historial local e interruptor de autonomía. 146
+triaje de hallazgos, historial local, interruptor de autonomía y
+recalibración del umbral. 168
 tests, incluido un barrido de secretos sobre todo el árbol.
 
 `moon-jules doctor` mide la latencia real de tu API y proyecta el coste
@@ -144,8 +162,8 @@ tus repositorios no se guarda **y tampoco se descarga**.
 `watch` ya se puede dejar corriendo en una pestaña y olvidarse: avisa por
 notificación del sistema, deja rastro en disco y no se pisa consigo mismo.
 
-Pendiente: `assign-next`, `calibrate` e integración con GitHub Issues.
-Ver `docs/BACKLOG.md`.
+Pendiente: `assign-next` e integración con GitHub Issues. Ver
+`docs/BACKLOG.md`.
 
 ## Documentación
 

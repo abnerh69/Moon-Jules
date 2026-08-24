@@ -94,8 +94,10 @@ la sesión.
 El umbral queda calibrado contra el juicio real del operador, no contra
 una heurística inventada. La contrapartida es que la calibración
 caduca: si Jules cambia su cadencia de latidos, N deja de ser válido.
-Mitigación: `moon-jules calibrate` reejecuta el análisis del spike sobre
-el histórico y reporta si N sigue en la rodilla.
+Mitigación: `moon-jules calibrate` (entrega 11) reejecuta el análisis
+sobre el histórico y dice si N sigue siendo la elección correcta. No
+inventa una puntuación: busca si algún candidato domina al vigente, y a
+igualdad prefiere el que detecta antes.
 
 ## Alternativas descartadas
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import pathlib
 import re
 import sys
 from dataclasses import dataclass, field, replace
@@ -596,6 +597,101 @@ def _norm_source(x: str) -> str:
     return x if x.startswith("sources/") else f"sources/github/{x}"
 
 
+async def cmd_calibrate(cfg: Config, args: argparse.Namespace) -> int:
+    """Comprueba si N sigue siendo el umbral correcto. Epica E09."""
+    from . import calibrate as cal
+
+    async with JulesClient(cfg.api_key, base_url=cfg.base_url) as c:
+        prog = Progress()
+        prog.step("consultando el historial")
+        todas = await c.sessions(include_archived=True)
+        muestra = sorted(
+            todas, key=lambda s: s.create_time or datetime.min.replace(tzinfo=UTC),
+            reverse=True,
+        )[: args.sessions]
+        print(
+            f"analizando {len(muestra)} sesiones de {len(todas)}; "
+            f"esto consulta el historial completo de cada una."
+        )
+
+        sem = asyncio.Semaphore(cfg.max_concurrency)
+        hechas = 0
+
+        async def una(name: str):
+            nonlocal hechas
+            async with sem:
+                try:
+                    acts = await c.activities(name)
+                except MoonJulesError:
+                    acts = []
+                hechas += 1
+                prog.step(f"{hechas}/{len(muestra)}")
+                return name, acts
+
+        por_sesion = dict(await asyncio.gather(*(una(s.name) for s in muestra)))
+        prog.done()
+
+    m = cal.analizar(por_sesion)
+    print(f"\nsesiones con al menos un rescate manual: {m.rescatadas}"
+          f" de {m.sesiones} ({100*m.rescatadas/max(m.sesiones,1):.1f}%)")
+    print(f"rescates totales: {len(m.estancados)}"
+          f"  |  sin respuesta del agente: {m.sin_responder}")
+    if m.ocio_descartado:
+        print(f"huecos descartados por ser reposo tras cerrar: {m.ocio_descartado}")
+
+    def dist(v: list[float], etq: str) -> None:
+        if not v:
+            print(f"\n{etq}: sin datos")
+            return
+        print(f"\n{etq}  (n={len(v)})")
+        for p in (50, 90, 99):
+            print(f"  p{p:<3} {humano(cal.percentil(v, p))}")
+        print(f"  max  {humano(max(v))}")
+
+    dist(m.sanos, "CADENCIA SANA entre eventos del agente")
+    dist(m.estancados, "SILENCIO ANTES DE UN RESCATE MANUAL")
+    dist(m.respuestas, "RESPUESTA AL RESCATE (el canario del prompt magico)")
+
+    if m.sanos and m.estancados:
+        print(f"\n{'N':>8}  {'sanos>N':>8} {'falsos':>8}  {'detect':>7} {'cobertura':>10}")
+        actual = cfg.policy.stall_after_s
+        for f in cal.tabla(m, cal.candidatos_con(actual)):
+            marca = " <- actual" if f.n_s == actual else ""
+            print(f"{f.n_s//60:>6} min  {f.falsos:>8} {f.falsos_pct:>7.2f}%  "
+                  f"{f.detectados:>7} {f.cobertura_pct:>9.0f}%{marca}")
+
+    texto, sugerido = cal.veredicto(m, cfg.policy.stall_after_s)
+    print(f"\nveredicto   {texto}")
+    if sugerido:
+        print(f"            para adoptarlo: stall_after_s = {sugerido} en "
+              f"[watch] del config.toml")
+    if args.json:
+        import json
+
+        pathlib.Path(args.json).write_text(
+            json.dumps(
+                {
+                    "at": iso_ahora(),
+                    "n_actual_s": cfg.policy.stall_after_s,
+                    "n_sugerido_s": sugerido,
+                    "sesiones": m.sesiones,
+                    "rescatadas": m.rescatadas,
+                    "sanos": m.sanos,
+                    "estancados": m.estancados,
+                    "respuestas": m.respuestas,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        print(f"            datos crudos en {args.json}")
+    return 0
+
+
+def iso_ahora() -> str:
+    return now().isoformat().replace("+00:00", "Z")
+
+
 async def cmd_history(cfg: Config, args: argparse.Namespace) -> int:
     with Store(cfg.state_path) as store:
         st = store.nudge_stats()
@@ -707,6 +803,7 @@ COMMANDS = {
     "ack": cmd_ack,
     "unack": cmd_unack,
     "history": cmd_history,
+    "calibrate": cmd_calibrate,
     "pause": cmd_pause,
     "resume": cmd_resume,
 }
@@ -764,6 +861,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     re_ = sub.add_parser("resume", parents=[common], help="reanuda la autonomia")
     re_.add_argument("source", nargs="?")
+
+    ca = sub.add_parser("calibrate", parents=[common],
+                        help="comprueba si N sigue siendo el umbral correcto")
+    ca.add_argument("--sessions", type=int, default=70,
+                    help="cuantas sesiones recientes analizar")
+    ca.add_argument("--json", help="guarda los datos crudos en un fichero")
 
     hi = sub.add_parser("history", parents=[common], help="historial local de nudges")
     hi.add_argument("--session", help="filtra por sesion")

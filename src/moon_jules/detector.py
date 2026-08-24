@@ -31,6 +31,10 @@ def humano(segundos: float | None) -> str:
     """
     if segundos is None:
         return "-"
+    if segundos < 90:
+        # La cadencia sana de Jules se mide en decenas de segundos:
+        # colapsarla a "0 min" borraria justo el dato que importa.
+        return f"{segundos:.0f} s"
     m = segundos / 60
     if m < 90:
         return f"{m:.0f} min"

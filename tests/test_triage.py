@@ -228,7 +228,7 @@ def test_el_ack_sobrevive_al_reinicio(tmp_path):
     "segundos,esperado",
     [
         (None, "-"),
-        (25, "0 min"),
+        (25, "25 s"),
         (50 * 60, "50 min"),
         (3 * 3600, "3 h"),
         (95 * 24 * 3600, "95 d"),
