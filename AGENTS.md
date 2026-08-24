@@ -142,6 +142,18 @@ Contrato verificado el 2026-08-24 contra el API en vivo:
 El discovery doc (`https://jules.googleapis.com/$discovery/rest?version=v1alpha`)
 sí lo es, y es público. Ante duda, consúltalo.
 
+## El snapshot es un contrato
+
+`docs/SNAPSHOT.md` describe lo que Moon-Jules publica y lo que una app
+externa consume. **Cambiarlo rompe otro proyecto**, y probablemente sin
+que nadie lo note hasta que el panel muestre datos absurdos. Si añades
+un campo, sube `SCHEMA` y documéntalo; si quitas o resignificas uno, eso
+es un cambio incompatible y necesita conversación, no un commit.
+
+`instance.published_at` se reescribe en **cada** ciclo, aunque no haya
+cambiado nada. No lo "optimices" publicando solo ante cambios: ese campo
+es un latido, y su valor está justo en que aparezca cuando no pasa nada.
+
 ## Seguridad
 
 La API key **nunca** se escribe en el config, ni se acepta por argumento

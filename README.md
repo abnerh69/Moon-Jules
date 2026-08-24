@@ -113,6 +113,18 @@ La calibración caduca. Si Jules cambia su cadencia, N deja de valer y el
 detector empieza a fallar en silencio. Conviene reejecutarlo cada
 tantas semanas, o cuando `history` muestre nudges sin respuesta.
 
+### Publicar el estado
+
+```bash
+moon-jules publish --stdout     # ver el snapshot sin publicarlo
+moon-jules publish              # segun [publish] del config
+```
+
+`watch` publica en cada ciclo cuando `publish.enabled = true`. El
+snapshot lleva un **latido** que se reescribe siempre, cambie o no el
+estado: así un lector puede distinguir "todo en orden" de "nadie está
+mirando". Contrato completo en `docs/SNAPSHOT.md`.
+
 ### Historial
 
 ```bash
@@ -148,7 +160,7 @@ cierra issues, ni mergea PRs, ni cambia labels, ni archiva sesiones. La lista co
 y `watch`, con detector calibrado, notificaciones nativas, logging con
 redacción de credenciales, carga desde `.env`, lock de instancia única,
 triaje de hallazgos, historial local, interruptor de autonomía y
-recalibración del umbral. 169
+recalibración del umbral. 189
 tests, incluido un barrido de secretos sobre todo el árbol.
 
 `moon-jules doctor` mide la latencia real de tu API y proyecta el coste
@@ -162,8 +174,11 @@ tus repositorios no se guarda **y tampoco se descarga**.
 `watch` ya se puede dejar corriendo en una pestaña y olvidarse: avisa por
 notificación del sistema, deja rastro en disco y no se pisa consigo mismo.
 
-Pendiente: empaquetado, vigilancia del contrato del API y verificación
-de `sendMessage` sobre sesión terminal. Ver `docs/BACKLOG.md`.
+Publica su estado para lectores externos (`docs/SNAPSHOT.md`).
+
+Pendiente: relevo entre instancias, empaquetado, vigilancia del contrato
+del API y verificación de `sendMessage` sobre sesión terminal. Ver
+`docs/BACKLOG.md`.
 
 ## Documentación
 

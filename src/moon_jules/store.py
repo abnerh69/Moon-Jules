@@ -194,6 +194,51 @@ class Store:
             )
         ]
 
+    def decisions(self) -> dict:
+        """Lo que decidio el arquitecto, no lo que se observo.
+
+        Triajes, pausas y nudges no se reconstruyen desde ninguna parte:
+        si se pierden, vuelven a aparecer las alertas ya silenciadas. La
+        tabla `sessions` en cambio es cache pura —se rehace con un poll
+        completo— y por eso no entra aqui: sincronizarla seria subir
+        cientos de KB por ciclo para no ganar nada.
+        """
+        return {
+            "acks": [
+                {"session": r["session"], "verdict": r["verdict"],
+                 "acked_at": r["acked_at"], "note": r["note"]}
+                for r in self.db.execute(
+                    "SELECT session, verdict, acked_at, note FROM acks"
+                )
+            ],
+            "pauses": [
+                {"scope": r["scope"], "paused_at": r["paused_at"],
+                 "until": r["until"], "reason": r["reason"]}
+                for r in self.db.execute("SELECT * FROM pauses")
+            ],
+            "nudges": [
+                {"session": r["session"], "sent_at": r["sent_at"],
+                 "verified_at": r["verified_at"], "outcome": r["outcome"]}
+                for r in self.db.execute(
+                    "SELECT session, sent_at, verified_at, outcome FROM nudges "
+                    "ORDER BY sent_at DESC LIMIT 200"
+                )
+            ],
+        }
+
+    def nudge_summary(self) -> dict[str, dict]:
+        """Ultimo nudge por sesion, con su desenlace, para el snapshot."""
+        out: dict[str, dict] = {}
+        for r in self.db.execute(
+            "SELECT session, sent_at, outcome, COUNT(*) OVER (PARTITION BY session) AS n "
+            "FROM nudges ORDER BY session, sent_at DESC"
+        ):
+            out.setdefault(
+                r["session"],
+                {"sent_at": r["sent_at"], "outcome": r["outcome"], "count": int(r["n"])},
+            )
+        return out
+
     def cached_sessions(self) -> list[Session]:
         """Reconstruye las sesiones conocidas sin tocar la red."""
         return [

@@ -88,6 +88,20 @@ una consulta de actividades y reporta si la máscara de campos sigue
 activa. Incluye un gate de compatibilidad con la versión mínima de
 Python declarada.
 
+### E20 — Publicación del estado *(entrega 13)*
+`moon-jules publish` y publicación en cada ciclo de `watch`. El snapshot
+es la frontera con la app de Android: esquema versionado y documentado
+en `docs/SNAPSHOT.md`. El latido (`published_at`, reescrito siempre) es
+el campo que permite detectar que el MacBook está dormido — una máquina
+muerta no puede avisar de que lo está, solo dejar de hablar. Destinos
+detrás de una interfaz pequeña: stdout, fichero o RTDB por REST.
+
+### E21 — Relevo entre instancias *(siguiente)*
+Elegir desde el móvil cuál de los tres portátiles vigila. Se diseña como
+**reclamación, no asignación**: el teléfono propone, la instancia
+confirma, y la app muestra deseado frente a real. Una asignación sin
+confirmar mentiría con autoridad si esa máquina está dormida.
+
 ## Siguiente ola
 
 ## Retirado

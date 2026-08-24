@@ -25,6 +25,20 @@ default_mode    = "read_only"   # read_only | unblock_only. ADR-005.
 # sesiones—, sino contexto: explica por que una sesion sigue en QUEUED.
 max_active_sessions = 15
 
+[publish]
+# Publica el estado donde otro proceso pueda leerlo. Contrato del
+# snapshot y semantica del latido: docs/SNAPSHOT.md
+enabled     = false
+target      = "file"        # stdout | file | rtdb
+instance_id = ""            # vacio: se usa el hostname de la maquina
+path        = "~/.local/state/moon-jules/snapshot.json"
+decisions   = true          # sube triajes, pausas y nudges (unos KB)
+
+# [publish.rtdb]
+# url  = "https://TU-PROYECTO-default-rtdb.firebaseio.com"
+# root = "moonjules"
+# auth = "env:MOONJULES_RTDB_TOKEN"   # ADR-004: referencia, nunca literal
+
 [notify]
 enabled    = false   # requiere osascript (macOS) o notify-send (Linux)
 cooldown_s = 3600    # no repetir la misma alerta antes de esto

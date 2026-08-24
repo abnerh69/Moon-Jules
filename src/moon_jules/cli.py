@@ -41,6 +41,7 @@ from .logs import configure as configure_logs
 from .logs import get as get_logger
 from .models import AutonomyMode, Session, SessionState
 from .notify import Notifier
+from .publish import FileSink, RtdbSink, Sink, StdoutSink, construir, instance_id
 from .store import GLOBAL_SCOPE, Store
 
 TERMINAL = {SessionState.COMPLETED, SessionState.FAILED}
@@ -555,6 +556,60 @@ async def cmd_unack(cfg: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def crear_sink(cfg: Config) -> Sink | None:
+    if not cfg.publish.enabled:
+        return None
+    destino = cfg.publish.target
+    if destino == "stdout":
+        return StdoutSink()
+    if destino == "file":
+        return FileSink(cfg.publish.path)
+    if destino == "rtdb":
+        return RtdbSink(cfg.publish.rtdb.url, cfg.publish.rtdb.root, cfg.publish.rtdb.token)
+    raise ConfigError(f"publish.target desconocido: {destino!r}")
+
+
+async def publicar(cfg: Config, report: Report, store: object, sink: Sink) -> None:
+    """Publica el snapshot y, si toca, las decisiones del arquitecto."""
+    snap = construir(
+        report,
+        ahora=now(),
+        instancia=instance_id(cfg.publish.instance_id),
+        intervalo_s=cfg.poll_interval_s,
+        modo=cfg.default_mode.value,
+        max_activas=cfg.budgets.max_active_sessions,
+        nudges=store.nudge_summary() if store else None,
+    )
+    await sink.publish(snap)
+    if cfg.publish.decisions and store and isinstance(sink, RtdbSink):
+        await sink.publish_decisions(snap["instance"]["id"], store.decisions())
+
+
+async def cmd_publish(cfg: Config, args: argparse.Namespace) -> int:
+    """Publica un snapshot suelto. `watch` lo hace en cada ciclo."""
+    if not cfg.publish.enabled and not args.stdout:
+        print("publish.enabled = false en el config; usa --stdout para probar.",
+              file=sys.stderr)
+        return 2
+    sink: Sink = StdoutSink() if args.stdout else crear_sink(cfg)
+    with Store(cfg.state_path) as store:
+        async with JulesClient(cfg.api_key, base_url=cfg.base_url) as c:
+            report = await Monitor(c, cfg, store).cycle(
+                execute=False, progress=Progress(), full=args.full
+            )
+        try:
+            await publicar(cfg, report, store, sink)
+        finally:
+            await sink.aclose()
+    if not args.stdout:
+        destino = (
+            cfg.publish.path if cfg.publish.target == "file" else cfg.publish.target
+        )
+        print(f"publicado en {destino}: {len(report.findings)} sesiones, "
+              f"{len(report.attention)} requieren atencion.")
+    return 0
+
+
 async def cmd_pause(cfg: Config, args: argparse.Namespace) -> int:
     """Corta la autonomia sin abrir un editor. ADR-005."""
     hasta = None
@@ -721,6 +776,7 @@ def _norm_session(x: str) -> str:
 
 async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
     execute = not args.dry_run
+    sink: Sink | None = None
     try:
         lock = InstanceLock(cfg.lock_path).acquire()
     except AlreadyRunningError as exc:
@@ -735,6 +791,7 @@ async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
         async with JulesClient(cfg.api_key, base_url=cfg.base_url) as c:
             with Store(cfg.state_path) as store:
                 mon = Monitor(c, cfg, store)
+                sink = crear_sink(cfg)
                 ciclo = 0
                 notifier = Notifier(
                     store,
@@ -761,6 +818,13 @@ async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
                             )
                             ciclo += 1
                             _emit(report, notifier)
+                            if sink is not None:
+                                # En cada ciclo, cambie o no el estado: el
+                                # latido es la mitad del valor del snapshot.
+                                try:
+                                    await publicar(cfg, report, store, sink)
+                                except MoonJulesError as exc:
+                                    log.error("no se pudo publicar: %s", exc)
                         except MoonJulesError as exc:
                             log.error("error de ciclo: %s", exc)
                             print(f"[{now():%H:%M:%S}] error de ciclo: {exc}", file=sys.stderr)
@@ -770,6 +834,8 @@ async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
                     log.info("watch detenido por el usuario")
                     print("\ndetenido.")
     finally:
+        if sink is not None:
+            await sink.aclose()
         lock.release()
     return 0
 
@@ -803,6 +869,7 @@ COMMANDS = {
     "unack": cmd_unack,
     "history": cmd_history,
     "calibrate": cmd_calibrate,
+    "publish": cmd_publish,
     "pause": cmd_pause,
     "resume": cmd_resume,
 }
@@ -866,6 +933,13 @@ def build_parser() -> argparse.ArgumentParser:
     ca.add_argument("--sessions", type=int, default=70,
                     help="cuantas sesiones recientes analizar")
     ca.add_argument("--json", help="guarda los datos crudos en un fichero")
+
+    pu = sub.add_parser("publish", parents=[common],
+                        help="publica el estado donde la app pueda leerlo")
+    pu.add_argument("--stdout", action="store_true",
+                    help="imprime el snapshot en vez de publicarlo")
+    pu.add_argument("--full", action="store_true",
+                    help="repagina el historial completo")
 
     hi = sub.add_parser("history", parents=[common], help="historial local de nudges")
     hi.add_argument("--session", help="filtra por sesion")

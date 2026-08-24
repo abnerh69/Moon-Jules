@@ -101,6 +101,25 @@ class Budgets:
 
 
 @dataclass(frozen=True)
+class RtdbConfig:
+    url: str = ""
+    root: str = "moonjules"
+    token: str = ""
+
+
+@dataclass(frozen=True)
+class PublishConfig:
+    """Publicacion del snapshot. Epica E20."""
+
+    enabled: bool = False
+    target: str = "file"          # stdout | file | rtdb
+    instance_id: str = ""         # vacio: se usa el hostname
+    path: Path = field(default=STATE_HOME / "snapshot.json")
+    decisions: bool = True        # sube acks, pausas y nudges (son KB)
+    rtdb: RtdbConfig = field(default_factory=RtdbConfig)
+
+
+@dataclass(frozen=True)
 class NotifyConfig:
     enabled: bool = False
     cooldown_s: int = 3600
@@ -129,6 +148,7 @@ class Config:
     budgets: Budgets = field(default_factory=Budgets)
     sources: dict[str, SourceConfig] = field(default_factory=dict)
     notify: NotifyConfig = field(default_factory=NotifyConfig)
+    publish: PublishConfig = field(default_factory=PublishConfig)
     state_path: Path = field(default=STATE_HOME / "state.db")
     log_dir: Path = field(default=STATE_HOME / "logs")
     lock_path: Path = field(default=STATE_HOME / "watch.lock")
@@ -140,8 +160,13 @@ class Config:
 
     @property
     def secrets(self) -> tuple[str, ...]:
-        """Valores a redactar en logs. Ver logging.redactor."""
-        return tuple(s for s in (self.api_key,) if s)
+        """Valores a redactar en logs. Ver logs.redact.
+
+        El token de RTDB viaja en la query de cada escritura, asi que
+        entra aqui igual que la credencial de Jules: cualquier camino por
+        el que acabe en un log queda enmascarado.
+        """
+        return tuple(s for s in (self.api_key, self.publish.rtdb.token) if s)
 
 
 def resolve_secret(ref: str, *, field_name: str = "api_key") -> str:
@@ -227,6 +252,30 @@ def load(path: Path | None = None, *, dotenv: Path | None = None) -> Config:
         cooldown_s=int(n.get("cooldown_s", 3600)),
     )
 
+    pub_raw = raw.get("publish") or {}
+    rtdb_raw = pub_raw.get("rtdb") or {}
+    token = (
+        resolve_secret(rtdb_raw.get("auth", ""), field_name="publish.rtdb.auth")
+        if rtdb_raw.get("auth")
+        else ""
+    )
+    publish = PublishConfig(
+        enabled=bool(pub_raw.get("enabled", False)),
+        target=pub_raw.get("target", "file"),
+        instance_id=pub_raw.get("instance_id", ""),
+        path=Path(
+            pub_raw.get("path", STATE_HOME / "snapshot.json")
+        ).expanduser(),
+        decisions=bool(pub_raw.get("decisions", True)),
+        rtdb=RtdbConfig(
+            url=rtdb_raw.get("url", ""),
+            root=rtdb_raw.get("root", "moonjules"),
+            token=token,
+        ),
+    )
+    if publish.enabled and publish.target == "rtdb" and not publish.rtdb.url:
+        raise ConfigError("publish.target = 'rtdb' pero falta publish.rtdb.url")
+
     state = raw.get("state") or {}
     state_path = Path(state.get("path", STATE_HOME / "state.db")).expanduser()
     return Config(
@@ -241,6 +290,7 @@ def load(path: Path | None = None, *, dotenv: Path | None = None) -> Config:
         budgets=budgets,
         sources=sources,
         notify=notify,
+        publish=publish,
         state_path=state_path,
         log_dir=Path(state.get("log_dir", state_path.parent / "logs")).expanduser(),
         lock_path=state_path.parent / "watch.lock",
