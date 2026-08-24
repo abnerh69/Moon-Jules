@@ -120,6 +120,10 @@ class Config:
     #: superior a N: si no hay nada en 24 h, la sesion esta parada y no
     #: hace falta su historia para saberlo.
     bootstrap_lookback_s: int = 86400
+    #: Cada cuantos ciclos se repagina el historial completo. El
+    #: incremental no ve revivir una sesion ya terminada; esto acota
+    #: cuanto puede tardarse en notarlo.
+    full_refresh_every: int = 12
     default_mode: AutonomyMode = AutonomyMode.READ_ONLY
     policy: Policy = field(default_factory=Policy)
     budgets: Budgets = field(default_factory=Budgets)
@@ -235,6 +239,7 @@ def load(path: Path | None = None, *, dotenv: Path | None = None) -> Config:
         poll_interval_s=int(watch.get("poll_interval_s", 300)),
         max_concurrency=max(1, int(watch.get("max_concurrency", 5))),
         bootstrap_lookback_s=int(watch.get("bootstrap_lookback_s", 86400)),
+        full_refresh_every=max(1, int(watch.get("full_refresh_every", 12))),
         default_mode=default_mode,
         policy=base_policy,
         budgets=budgets,

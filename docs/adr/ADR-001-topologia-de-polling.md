@@ -83,9 +83,32 @@ Efecto colateral que conviene anotar: el codigo de los repositorios ya
 ni siquiera viaja por el cable. El NO 10 del Inception decia que no se
 guarda; ahora tampoco se descarga.
 
-El suelo restante son las paginas de `sessions.list`, que son
-inevitablemente secuenciales: cada pagina necesita el token de la
-anterior.
+**Tercera nota de campo (entrega 09).** Con la latencia ya medida
+—p50 de 1.53 s por peticion contra el API real— quedo claro que el
+suelo eran las 6 paginas de `sessions.list` en serie: 9 de los 12
+segundos del ciclo. Y ese coste **crece con el historial**: a 100
+sesiones diarias, en diez dias serian 16 paginas.
+
+**Listado incremental.** `createTime` es inmutable y la lista va en
+orden descendente, luego el orden es estable y todo lo nuevo esta al
+principio. En regimen estable se pide una pagina y se relee
+individualmente solo lo que no habia terminado. El coste deja de
+depender del tamano del historial.
+
+Precio: una sesion ya terminada que reviva no sale en la pagina de
+novedades ni se relee. Ocurre —el Spike 01 vio 5 de 70—, asi que `watch`
+repagina el historial cada `full_refresh_every` ciclos (12 por defecto,
+una hora), y `status --full` lo fuerza.
+
+**Aviso para quien toque esto.** La comparacion de la marca se hace
+sobre `datetime`, nunca sobre texto. El API escribe la zona horaria como
+`Z` y el store como `+00:00`; lexicograficamente `Z` es mayor que `+`,
+asi que comparar cadenas daba siempre verdadero y el incremental
+degeneraba en un poll completo **sin dar la cara**. Hay un test que lo
+fija.
+
+El suelo restante es una pagina por ciclo mas una peticion por sesion
+viva, todo lo demas en paralelo.
 
 ## Consecuencias
 

@@ -20,6 +20,8 @@ from moon_jules.detector import Policy, Verdict
 from moon_jules.models import Activity, AutonomyMode, Session, SessionState
 from moon_jules.store import Store
 
+from .fakes import FakeJules
+
 NOW = datetime.now(UTC)
 SRC = "sources/github/acme/repo"
 
@@ -30,24 +32,6 @@ def ago(**kw: float) -> datetime:
 
 def act(kind: str, who: str, when: datetime) -> Activity:
     return Activity(f"a/{kind}/{when.timestamp()}", kind, who, when)
-
-
-class FakeClient:
-    def __init__(self, sessions, activities):
-        self._s, self._a = sessions, activities
-        self.sent: list[tuple[str, str]] = []
-
-    async def sessions(self, *, include_archived: bool = False):
-        return list(self._s)
-
-    async def activities(self, name, *, after=None, limit=None):
-        return sorted(self._a.get(name, []), key=lambda a: a.create_time)
-
-    async def send_message(self, name, prompt):
-        self.sent.append((name, prompt))
-
-    async def approve_plan(self, name):
-        pass
 
 
 def config(tmp_path, mode=AutonomyMode.READ_ONLY) -> Config:
@@ -77,7 +61,7 @@ def run(c):
 
 def test_lo_silenciado_sale_del_radar_pero_sigue_estando_mal(tmp_path):
     s = sess(SessionState.PAUSED, "sessions/muerta", update_time=ago(days=97))
-    client = FakeClient([s], {s.name: [act("progressUpdated", "agent", ago(days=97))]})
+    client = FakeJules([s], {s.name: [act("progressUpdated", "agent", ago(days=97))]})
     cfg = config(tmp_path)
     with Store(cfg.state_path) as store:
         mon = Monitor(client, cfg, store)
@@ -103,11 +87,11 @@ def test_un_veredicto_nuevo_reaparece_aunque_la_sesion_este_silenciada(tmp_path)
     cfg = config(tmp_path)
     with Store(cfg.state_path) as store:
         store.ack(s.name, Verdict.PAUSED_STALE.value, NOW)
-        assert run(Monitor(FakeClient([s], acts), cfg, store).cycle()).attention == []
+        assert run(Monitor(FakeJules([s], acts), cfg, store).cycle()).attention == []
 
         empeorada = Session(name=s.name, state=SessionState.FAILED, source=SRC,
                             update_time=ago(minutes=5))
-        peor = run(Monitor(FakeClient([empeorada], {}), cfg, store).cycle())
+        peor = run(Monitor(FakeJules([empeorada], {}), cfg, store).cycle())
     assert len(peor.attention) == 1
     assert peor.attention[0].verdict is Verdict.FAILED
 
@@ -118,9 +102,9 @@ def test_unack_devuelve_la_sesion_al_radar(tmp_path):
     cfg = config(tmp_path)
     with Store(cfg.state_path) as store:
         store.ack(s.name, Verdict.PAUSED_STALE.value, NOW)
-        assert run(Monitor(FakeClient([s], acts), cfg, store).cycle()).attention == []
+        assert run(Monitor(FakeJules([s], acts), cfg, store).cycle()).attention == []
         assert store.unack(s.name) == 1
-        assert len(run(Monitor(FakeClient([s], acts), cfg, store).cycle()).attention) == 1
+        assert len(run(Monitor(FakeJules([s], acts), cfg, store).cycle()).attention) == 1
 
 
 def test_la_deuda_historica_no_tapa_un_problema_nuevo(tmp_path):
@@ -135,7 +119,7 @@ def test_la_deuda_historica_no_tapa_un_problema_nuevo(tmp_path):
     acts[nueva.name] = [act("progressUpdated", "agent", ago(hours=1))]
     cfg = config(tmp_path)
     with Store(cfg.state_path) as store:
-        mon = Monitor(FakeClient([*viejas, nueva], acts), cfg, store)
+        mon = Monitor(FakeJules([*viejas, nueva], acts), cfg, store)
         antes = run(mon.cycle())
         assert len(antes.attention) == 26
 
@@ -154,7 +138,7 @@ def test_el_render_marca_lo_silenciado(tmp_path):
     cfg = config(tmp_path)
     with Store(cfg.state_path) as store:
         store.ack(s.name, Verdict.PAUSED_STALE.value, NOW)
-        salida = render(run(Monitor(FakeClient([s], acts), cfg, store).cycle()))
+        salida = render(run(Monitor(FakeJules([s], acts), cfg, store).cycle()))
     assert "~~" in salida
     assert "1 silenciadas" in salida
 
@@ -175,7 +159,7 @@ def test_un_nudge_respondido_se_registra_como_respondido(tmp_path):
     mudo = {s.name: [act("progressUpdated", "agent", ago(hours=2))]}
     cfg = config(tmp_path, AutonomyMode.UNBLOCK_ONLY)
     with Store(cfg.state_path) as store:
-        run(Monitor(FakeClient([s], mudo), cfg, store).cycle(execute=True))
+        run(Monitor(FakeJules([s], mudo), cfg, store).cycle(execute=True))
         assert store.nudge_stats()["pending"] == 1
 
         # El evento del agente tiene que ser posterior al nudge, y el
@@ -184,7 +168,7 @@ def test_un_nudge_respondido_se_registra_como_respondido(tmp_path):
         revivido = {
             s.name: [*mudo[s.name], act("progressUpdated", "agent", NOW + timedelta(minutes=1))]
         }
-        run(Monitor(FakeClient([s], revivido), cfg, store).cycle(execute=True))
+        run(Monitor(FakeJules([s], revivido), cfg, store).cycle(execute=True))
         st = store.nudge_stats()
     assert st["answered"] == 1
     assert st["pending"] == 0
@@ -203,7 +187,7 @@ def test_un_nudge_ignorado_se_registra_como_sin_respuesta(tmp_path):
         state_path=tmp_path / "state.db",
     )
     with Store(cfg.state_path) as store:
-        mon = Monitor(FakeClient([s], mudo), cfg, store)
+        mon = Monitor(FakeJules([s], mudo), cfg, store)
         run(mon.cycle(execute=True))
         run(mon.cycle(execute=True))
         st = store.nudge_stats()

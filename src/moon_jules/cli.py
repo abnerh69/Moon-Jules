@@ -34,7 +34,7 @@ from .detector import (
     freshness,
     humano,
 )
-from .errors import ConfigError, MoonJulesError
+from .errors import ConfigError, MoonJulesError, NotFoundError
 from .lock import AlreadyRunningError, InstanceLock
 from .logs import configure as configure_logs
 from .logs import get as get_logger
@@ -131,13 +131,18 @@ class Monitor:
     store: object | None = None  # Store, opcional para `status` en seco
     _reasons: dict[str, str | None] = field(default_factory=dict)
 
-    async def cycle(self, *, execute: bool = False, progress: Progress | None = None) -> Report:
+    async def cycle(
+        self,
+        *,
+        execute: bool = False,
+        progress: Progress | None = None,
+        full: bool = False,
+    ) -> Report:
         at = now()
         report = Report(at=at)
         prog = progress or Progress(enabled=False)
 
-        prog.step("consultando sesiones")
-        sessions = await self.client.sessions()
+        sessions = await self._collect(full=full, prog=prog)
 
         acked = self.store.acked_pairs() if self.store else set()
         nudges = self.store.last_nudges() if self.store else {}
@@ -187,6 +192,50 @@ class Monitor:
                 await self._act(finding, src.policy, at)
         prog.done()
         return report
+
+    async def _collect(self, *, full: bool, prog: Progress) -> list[Session]:
+        """Lista de sesiones, completa o incremental. ADR-001.
+
+        La completa pagina las 6+ paginas del historial y su coste crece
+        con el. La incremental pide una pagina y relee individualmente
+        solo las sesiones que no habian terminado, que son las unicas
+        cuyo estado puede haber cambiado sin salir al principio.
+
+        El precio es que una sesion ya terminada que reviva pasa
+        inadvertida hasta el siguiente refresco completo. Ocurre —el
+        Spike 01 vio 5 de 70—, y por eso `watch` hace uno periodico.
+        """
+        marca = self.store.newest_created() if self.store else None
+        if full or not self.store or not marca:
+            prog.step("consultando el historial completo")
+            return await self.client.sessions()
+
+        prog.step("consultando sesiones nuevas")
+        nuevas = await self.client.sessions_since(marca)
+        frescas = {s.name: s for s in nuevas}
+
+        seguidas = [n for n in self.store.tracked_non_terminal() if n not in frescas]
+        if seguidas:
+            prog.step(f"{len(nuevas)} nuevas, releyendo {len(seguidas)} en curso")
+            sem = asyncio.Semaphore(self.config.max_concurrency)
+
+            async def una(name: str) -> Session | None:
+                async with sem:
+                    try:
+                        return await self.client.session(name)
+                    except NotFoundError:
+                        # Borrada desde el API: deja de existir para el ciclo.
+                        return None
+
+            for s in await asyncio.gather(*(una(n) for n in seguidas)):
+                if s is not None:
+                    frescas[s.name] = s
+
+        # Las terminales conocidas se reponen desde SQLite para que el
+        # resumen siga contando el enjambre entero, sin coste de red.
+        return list(frescas.values()) + [
+            s for s in self.store.cached_sessions() if s.name not in frescas
+        ]
 
     async def _gather(
         self, sesiones: list[Session], prog: Progress
@@ -405,7 +454,7 @@ async def cmd_status(cfg: Config, args: argparse.Namespace) -> int:
     async with JulesClient(cfg.api_key, base_url=cfg.base_url) as c:
         with Store(cfg.state_path) as store:
             report = await Monitor(c, cfg, store).cycle(
-                execute=False, progress=Progress()
+                execute=False, progress=Progress(), full=args.full
             )
     if args.all:
         print(render(report))
@@ -559,6 +608,7 @@ async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
         async with JulesClient(cfg.api_key, base_url=cfg.base_url) as c:
             with Store(cfg.state_path) as store:
                 mon = Monitor(c, cfg, store)
+                ciclo = 0
                 notifier = Notifier(
                     store,
                     enabled=cfg.notify.enabled,
@@ -575,9 +625,14 @@ async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
                     while True:
                         started = asyncio.get_event_loop().time()
                         try:
+                            # El incremental no ve revivir una sesion ya
+                            # terminada; un repaso completo periodico acota
+                            # cuanto puede tardarse en notarlo.
+                            completo = ciclo % cfg.full_refresh_every == 0
                             report = await mon.cycle(
-                                execute=execute, progress=Progress()
+                                execute=execute, progress=Progress(), full=completo
                             )
+                            ciclo += 1
                             _emit(report, notifier)
                         except MoonJulesError as exc:
                             log.error("error de ciclo: %s", exc)
@@ -651,6 +706,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="muestra solo lo que requiere atencion")
     st.add_argument("--all", action="store_true",
                     help="incluye tambien lo silenciado")
+    st.add_argument("--full", action="store_true",
+                    help="repagina el historial completo en vez de solo lo nuevo")
 
     ak = sub.add_parser("ack", parents=[common],
                         help="silencia hallazgos ya vistos (no los arregla)")

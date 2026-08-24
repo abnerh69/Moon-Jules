@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import AsyncIterator
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -31,7 +32,7 @@ from .errors import (
     TransientError,
 )
 from .logs import get as get_logger
-from .models import Activity, Session
+from .models import Activity, Session, parse_ts
 
 log = get_logger("client")
 
@@ -228,6 +229,32 @@ class JulesClient:
                 "/sessions", "sessions", params, fields=FIELDS_SESSIONS, max_pages=50
             )
         ]
+
+    async def sessions_since(self, marca: datetime) -> list[Session]:
+        """Solo las creadas despues de `marca`. ADR-001, listado incremental.
+
+        `sessions.list` va en orden descendente por `createTime`, y
+        `createTime` es inmutable: el orden de la lista es estable. Por
+        tanto, todo lo nuevo esta al principio, y en cuanto aparece una
+        sesion que ya conocemos se puede dejar de paginar.
+
+        En regimen estable esto cuesta una pagina en vez de todas, y el
+        coste deja de crecer con el tamano del historial.
+        """
+        out: list[Session] = []
+        async for raw in self._paginate(
+            "/sessions", "sessions", fields=FIELDS_SESSIONS, max_pages=50
+        ):
+            # Se comparan datetimes, no cadenas. El API escribe la zona
+            # como "Z" y el store como "+00:00": lexicograficamente "Z"
+            # es mayor que "+", asi que comparar texto daba siempre
+            # verdadero y el incremental degeneraba en un poll completo
+            # sin dar la cara.
+            creada = parse_ts(raw.get("createTime"))
+            if creada is None or creada <= marca:
+                return out
+            out.append(Session.from_api(raw))
+        return out
 
     async def session(self, name: str) -> Session:
         return Session.from_api(await self._request("GET", f"/{_norm(name)}"))

@@ -119,6 +119,10 @@ Contrato verificado el 2026-08-24 contra el API en vivo:
   estado ni por source. Orden descendente por `createTime`.
 - `activities.list` va en orden ascendente. Página máxima 100 en ambos.
 - No hay webhooks. No hay headers de cuota.
+- El listado de sesiones es incremental y la marca se compara como
+  `datetime`, **nunca como texto**: el API escribe `Z` y el store
+  `+00:00`, y `Z` > `+` lexicográficamente. Comparar cadenas hace que
+  la optimización se apague sin avisar.
 - `fields` (respuesta parcial) sí está soportado, y se usa. **No lo
   quites**: sin él, cada actividad arrastra diffs completos y capturas
   en base64, y un ciclo pasa de segundos a un minuto.

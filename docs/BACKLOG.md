@@ -74,6 +74,12 @@ Respuesta parcial con `fields` para no descargar diffs ni capturas de
 pantalla, y arranque acotado para no paginar la historia entera de cada
 sesión. Segunda nota de campo en ADR-001.
 
+### E17 — Listado incremental *(entrega 09)*
+El coste del ciclo dejaba de estar en el número de peticiones y pasaba a
+estar en repaginar un historial que solo crece. Ahora se pide una página
+de novedades y se releen solo las sesiones en curso, con refresco
+completo periódico. Tercera nota de campo en ADR-001.
+
 ## Siguiente ola
 
 ## Ola de autonomía

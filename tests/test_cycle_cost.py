@@ -22,47 +22,14 @@ from moon_jules.detector import Policy
 from moon_jules.models import Activity, AutonomyMode, Session, SessionState
 from moon_jules.store import Store
 
+from .fakes import FakeJules
+
 NOW = datetime.now(UTC)
 SRC = "sources/github/acme/repo"
 
 
 def ago(**kw: float) -> datetime:
     return NOW - timedelta(**kw)
-
-
-class CountingClient:
-    """Cuenta peticiones y registra el paralelismo máximo alcanzado."""
-
-    def __init__(self, sessions, activities, *, pages: int = 1, delay: float = 0.0):
-        self._s, self._a = sessions, activities
-        self.pages = pages
-        self.delay = delay
-        self.requests = 0
-        self.activity_calls: list[str] = []
-        self.en_vuelo = 0
-        self.pico = 0
-
-    async def sessions(self, *, include_archived: bool = False):
-        self.requests += self.pages
-        return list(self._s)
-
-    async def activities(self, name, *, after=None, limit=None):
-        self.requests += 1
-        self.activity_calls.append(name)
-        self.en_vuelo += 1
-        self.pico = max(self.pico, self.en_vuelo)
-        try:
-            if self.delay:
-                await asyncio.sleep(self.delay)
-            return self._a.get(name, [])
-        finally:
-            self.en_vuelo -= 1
-
-    async def send_message(self, name, prompt):
-        pass
-
-    async def approve_plan(self, name):
-        pass
 
 
 def config(tmp_path, concurrency: int = 5) -> Config:
@@ -100,7 +67,7 @@ def test_la_razon_de_fallo_se_consulta_una_sola_vez(tmp_path):
                               text="Unable to install deps")]}
     cfg = config(tmp_path)
     with Store(cfg.state_path) as store:
-        client = CountingClient([s], acts)
+        client = FakeJules([s], acts)
         mon = Monitor(client, cfg, store)
         primero = run(mon.cycle())
         tras_primero = len(client.activity_calls)
@@ -124,7 +91,7 @@ def test_un_fallo_sin_razon_declarada_tampoco_se_reconsulta(tmp_path):
     acts = {s.name: [Activity("a", "progressUpdated", "agent", ago(days=10))]}
     cfg = config(tmp_path)
     with Store(cfg.state_path) as store:
-        client = CountingClient([s], acts)
+        client = FakeJules([s], acts)
         mon = Monitor(client, cfg, store)
         run(mon.cycle())
         run(mon.cycle())
@@ -136,13 +103,18 @@ def test_las_completadas_nunca_generan_peticiones(tmp_path):
     completadas = [sess(SessionState.COMPLETED, f"sessions/c{i}") for i in range(50)]
     cfg = config(tmp_path)
     with Store(cfg.state_path) as store:
-        client = CountingClient(completadas, {})
+        client = FakeJules(completadas, {})
         run(Monitor(client, cfg, store).cycle())
     assert client.activity_calls == []
 
 
 def test_el_coste_estable_es_solo_lo_vivo(tmp_path):
-    """Un enjambre como el real: 538 sesiones, 9 vivas, 11 fallidas."""
+    """Un enjambre como el real: 538 sesiones, 9 vivas, 11 fallidas.
+
+    El primer ciclo paga el historial completo. Los siguientes piden una
+    página de novedades y releen solo lo que seguía en curso, así que el
+    coste deja de crecer con el tamaño del historial.
+    """
     fallidas = [sess(SessionState.FAILED, f"sessions/f{i}") for i in range(11)]
     vivas = [
         Session(name=f"sessions/a{i}", state=SessionState.IN_PROGRESS, source=SRC,
@@ -154,13 +126,15 @@ def test_el_coste_estable_es_solo_lo_vivo(tmp_path):
             for s in (*fallidas, *vivas)}
     cfg = config(tmp_path)
     with Store(cfg.state_path) as store:
-        client = CountingClient([*fallidas, *vivas, *hechas], acts, pages=6)
+        client = FakeJules([*fallidas, *vivas, *hechas], acts, pages=6)
         mon = Monitor(client, cfg, store)
         run(mon.cycle())
-        assert client.requests == 6 + 20   # primer ciclo: paga las fallidas
+        assert client.requests == 6 + 20   # primer ciclo: paga el historial
         client.requests = 0
         run(mon.cycle())
-    assert client.requests == 6 + 9, "el ciclo estable debe pagar solo por lo vivo"
+        # 1 pagina de novedades + 9 relecturas + 9 actividades
+        assert client.requests == 1 + 9 + 9
+        assert len(client.since_calls) == 1, "no debe repaginar el historial"
 
 
 # --------------------------------------------------------------------
@@ -178,7 +152,7 @@ def test_las_consultas_van_en_paralelo(tmp_path):
             for s in vivas}
     cfg = config(tmp_path, concurrency=5)
     with Store(cfg.state_path) as store:
-        client = CountingClient(vivas, acts, delay=0.02)
+        client = FakeJules(vivas, acts, delay=0.02)
         run(Monitor(client, cfg, store).cycle())
     assert client.pico > 1, "sigue siendo secuencial"
 
@@ -194,7 +168,7 @@ def test_el_paralelismo_respeta_el_limite(tmp_path):
             for s in vivas}
     cfg = config(tmp_path, concurrency=3)
     with Store(cfg.state_path) as store:
-        client = CountingClient(vivas, acts, delay=0.02)
+        client = FakeJules(vivas, acts, delay=0.02)
         run(Monitor(client, cfg, store).cycle())
     assert client.pico <= 3
 
@@ -255,7 +229,7 @@ def test_un_ciclo_sin_progreso_no_falla(tmp_path):
     s = sess(SessionState.COMPLETED, "sessions/c")
     cfg = config(tmp_path)
     with Store(cfg.state_path) as store:
-        run(Monitor(CountingClient([s], {}), cfg, store).cycle())
+        run(Monitor(FakeJules([s], {}), cfg, store).cycle())
 
 
 # --------------------------------------------------------------------
@@ -425,6 +399,28 @@ def test_si_el_api_rechaza_la_mascara_se_sigue_sin_ella():
     run(c.aclose())
 
 
+def test_el_incremental_compara_fechas_y_no_texto(tmp_path):
+    """El bug que hacía inútil la optimización sin dar la cara.
+
+    El API escribe la zona horaria como "Z" y el store como "+00:00".
+    Lexicográficamente "Z" > "+", así que comparar cadenas daba siempre
+    verdadero: se paginaba el historial entero creyendo que se pedían
+    solo las novedades.
+    """
+    vieja = Session(name="sessions/vieja", state=SessionState.COMPLETED, source=SRC,
+                    create_time=ago(days=30), update_time=ago(days=30))
+    cfg = config(tmp_path)
+    with Store(cfg.state_path) as store:
+        client = FakeJules([vieja], {})
+        mon = Monitor(client, cfg, store)
+        run(mon.cycle())
+        marca = store.newest_created()
+        assert isinstance(marca, datetime), "la marca debe ser un datetime"
+        run(mon.cycle())
+    # nada nuevo: la segunda pasada no debe traerse la sesión otra vez
+    assert client.since_calls and client.session_gets == []
+
+
 def test_la_primera_vista_no_pide_la_historia_entera(tmp_path):
     """Sin acotar, una sesión con cientos de actividades cuesta páginas.
 
@@ -434,7 +430,7 @@ def test_la_primera_vista_no_pide_la_historia_entera(tmp_path):
                 create_time=ago(days=200), update_time=ago(days=100))
     cfg = config(tmp_path)
     with Store(cfg.state_path) as store:
-        client = CountingClient([s], {})
+        client = FakeJules([s], {})
         run(Monitor(client, cfg, store).cycle())
     assert len(client.activity_calls) == 1
 
@@ -450,5 +446,36 @@ def test_sin_ancla_una_sesion_muerta_no_pasa_por_sana(tmp_path):
                 create_time=ago(days=120), update_time=None)
     cfg = config(tmp_path)
     with Store(cfg.state_path) as store:
-        report = run(Monitor(CountingClient([s], {}), cfg, store).cycle())
+        report = run(Monitor(FakeJules([s], {}), cfg, store).cycle())
     assert report.attention, "una sesión sin señal de vida no puede salir sana"
+
+
+def test_el_refresco_completo_recupera_una_sesion_revivida(tmp_path):
+    """El precio del incremental, y su antídoto.
+
+    Una sesión ya terminada que revive no sale en la página de novedades
+    —su `createTime` es viejo— ni se relee, porque constaba terminada.
+    El Spike 01 vio 5 revivales en 70 sesiones, así que no es teórico:
+    por eso `watch` repagina el historial cada tantos ciclos.
+    """
+    s = Session(name="sessions/z", state=SessionState.COMPLETED, source=SRC,
+                create_time=ago(days=30), update_time=ago(days=1))
+    cfg = config(tmp_path)
+    with Store(cfg.state_path) as store:
+        client = FakeJules([s], {})
+        mon = Monitor(client, cfg, store)
+        run(mon.cycle())
+
+        revivida = Session(name=s.name, state=SessionState.IN_PROGRESS, source=SRC,
+                           create_time=ago(days=30), update_time=ago(hours=5))
+        client.replace_sessions([revivida])
+        client.set_activities(
+            s.name, [Activity("a", "progressUpdated", "agent", ago(hours=5))]
+        )
+
+        incremental = run(mon.cycle())
+        assert incremental.findings[0].session.state is SessionState.COMPLETED
+
+        completo = run(mon.cycle(full=True))
+    assert completo.findings[0].session.state is SessionState.IN_PROGRESS
+    assert completo.attention, "revivió y lleva 5 h muda: debe alertar"

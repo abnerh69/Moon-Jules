@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from .detector import NudgeRecord
-from .models import Session
+from .models import Session, SessionState
 
 SCHEMA_VERSION = 5
 
@@ -170,6 +170,50 @@ class Store:
                 _iso(last_agent_at), last_agent_kind, cursor, s.failure_reason, _iso(now),
             ),
         )
+
+    def newest_created(self) -> datetime | None:
+        """`createTime` mas reciente conocido: la marca del incremental.
+
+        Devuelve un datetime, no una cadena: el API y el store escriben
+        la zona horaria distinto y comparar texto da resultados falsos.
+        """
+        row = self.db.execute(
+            "SELECT MAX(created_at) AS m FROM sessions WHERE created_at IS NOT NULL"
+        ).fetchone()
+        return _dt(row["m"]) if row and row["m"] else None
+
+    def tracked_non_terminal(self) -> list[str]:
+        """Sesiones que no habian terminado la ultima vez que se miraron.
+
+        Son las unicas cuyo estado puede haber cambiado sin que aparezcan
+        en la primera pagina, asi que son las unicas que hay que releer
+        una por una.
+        """
+        return [
+            r["name"]
+            for r in self.db.execute(
+                "SELECT name FROM sessions WHERE state NOT IN ('COMPLETED','FAILED')"
+            )
+        ]
+
+    def cached_sessions(self) -> list[Session]:
+        """Reconstruye las sesiones conocidas sin tocar la red."""
+        return [
+            Session(
+                name=r["name"],
+                state=SessionState.parse(r["state"]),
+                title=r["title"],
+                url=r["url"],
+                source=r["source"],
+                create_time=_dt(r["created_at"]),
+                update_time=_dt(r["seen_at"]),
+                failure_reason=r["failure_reason"],
+            )
+            for r in self.db.execute(
+                "SELECT name, source, state, title, url, created_at, seen_at, "
+                "failure_reason FROM sessions"
+            )
+        ]
 
     def failure_reasons(self) -> dict[str, str]:
         """Razones de fallo ya conocidas.
