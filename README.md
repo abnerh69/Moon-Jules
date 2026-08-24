@@ -63,6 +63,32 @@ moon-jules watch --dry-run # dictamina sin ejecutar ninguna acción
 moon-jules -v status       # con logging en detalle por consola
 ```
 
+### Triaje de la deuda acumulada
+
+Si el enjambre lleva tiempo funcionando, el primer `status -a` mostrará
+todo lo que se quedó por el camino — y ese ruido enterrará lo que sí es
+accionable. Se silencia una vez:
+
+```bash
+moon-jules ack --stale-before 2026-07-01        # muestra qué silenciaría
+moon-jules ack --stale-before 2026-07-01 --yes  # lo silencia
+moon-jules ack --list                           # ver lo silenciado
+moon-jules unack <session-id>                   # devolverlo al radar
+moon-jules status --all                         # incluir lo silenciado
+```
+
+Silenciar no arregla nada: saca el hallazgo del radar. Se silencia el par
+(sesión, veredicto), así que **si el veredicto cambia, reaparece**: una
+sesión silenciada como `paused_stale` que pase a `failed` vuelve a
+avisar.
+
+### Historial
+
+```bash
+moon-jules history                 # nudges enviados y su desenlace
+moon-jules history --session <id>
+```
+
 Los logs de `watch` van a `~/.local/state/moon-jules/logs/`, con rotación
 y **redacción de credenciales**: ninguna API key llega al disco.
 
@@ -87,16 +113,17 @@ archiva sesiones. La lista completa de lo que no hará está en
 
 ## Estado
 
-**v0.2.0 — `watch` desatendido.** Funcionan `doctor`, `sources`, `status`
+**v0.3.0 — `watch` desatendido y triable.** Funcionan `doctor`, `sources`, `status`
 y `watch`, con detector calibrado, notificaciones nativas, logging con
-redacción de credenciales, carga desde `.env` y lock de instancia única.
-80 tests, incluido un barrido de secretos sobre todo el árbol.
+redacción de credenciales, carga desde `.env`, lock de instancia única,
+triaje de hallazgos e historial local. 95 tests, incluido un barrido de
+secretos sobre todo el árbol.
 
 `watch` ya se puede dejar corriendo en una pestaña y olvidarse: avisa por
 notificación del sistema, deja rastro en disco y no se pisa consigo mismo.
 
-Pendiente: `assign-next`, `pause`, `history`, `calibrate` e integración
-con GitHub Issues. Ver `docs/BACKLOG.md`.
+Pendiente: `assign-next`, `pause`, `calibrate` e integración con GitHub
+Issues. Ver `docs/BACKLOG.md`.
 
 ## Documentación
 

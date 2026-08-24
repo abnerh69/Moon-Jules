@@ -15,14 +15,23 @@ import argparse
 import asyncio
 import logging
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
 from . import __version__
 from .client import JulesClient
 from .config import CONFIG_PATH, Config, load
-from .detector import Action, Finding, Freshness, Policy, Report, assess, freshness
+from .detector import (
+    Action,
+    Finding,
+    Freshness,
+    Policy,
+    Report,
+    Verdict,
+    assess,
+    freshness,
+)
 from .errors import ConfigError, MoonJulesError
 from .lock import AlreadyRunningError, InstanceLock
 from .logs import configure as configure_logs
@@ -52,6 +61,19 @@ def now() -> datetime:
     return datetime.now(UTC)
 
 
+def humano(segundos: float | None) -> str:
+    """Duracion legible. `136800m` no le dice nada a nadie; `95d` si."""
+    if segundos is None:
+        return "    -"
+    m = segundos / 60
+    if m < 90:
+        return f"{m:4.0f}m"
+    h = m / 60
+    if h < 48:
+        return f"{h:4.0f}h"
+    return f"{h/24:4.0f}d"
+
+
 @dataclass
 class Monitor:
     """Un ciclo de vigilancia. ADR-001: poll global + actividades incrementales."""
@@ -64,6 +86,7 @@ class Monitor:
         at = now()
         report = Report(at=at)
         sessions = await self.client.sessions()
+        acked = self.store.acked_pairs() if self.store else set()
         for s in sessions:
             fresh, cursor = await self._freshness(s)
             if s.state is SessionState.FAILED and not s.failure_reason:
@@ -73,7 +96,11 @@ class Monitor:
             finding = assess(
                 s, fresh, at, policy=src.policy, mode=src.mode, nudge=nudge
             )
+            if (s.name, finding.verdict.value) in acked:
+                finding = replace(finding, acked=True)
             report.findings.append(finding)
+            if self.store and nudge is not None:
+                self._close_nudge(finding, nudge, fresh, at)
             if self.store:
                 self.store.upsert_session(
                     s,
@@ -85,6 +112,18 @@ class Monitor:
             if execute:
                 await self._act(finding, src.policy, at)
         return report
+
+    def _close_nudge(self, f: Finding, nudge, fresh: Freshness, at: datetime) -> None:
+        """Cierra el registro del ultimo nudge cuando ya se sabe si sirvio.
+
+        Sin esto los nudges se quedaban en 'pending' para siempre y
+        `history` no podia decir si el prompt magico sigue funcionando —
+        que es justo el canario del riesgo 5.
+        """
+        if fresh.last_agent_at is not None and fresh.last_agent_at > nudge.sent_at:
+            self.store.resolve_nudge(f.session.name, "answered", fresh.last_agent_at)
+        elif f.verdict is Verdict.NUDGE_UNANSWERED:
+            self.store.resolve_nudge(f.session.name, "unanswered", at)
 
     async def _freshness(self, s: Session) -> tuple[Freshness, str | None]:
         """Frescura de una sesion. Las terminales no se consultan.
@@ -135,10 +174,11 @@ def render(report: Report, *, only_attention: bool = False) -> str:
     width = min(34, max((len(f.session.repo) for f in rows), default=10))
     out = []
     for f in rows:
-        sil = f"{f.silence_s/60:5.0f}m" if f.silence_s is not None else "    -"
+        sil = humano(f.silence_s)
         title = (f.session.title or "")[:30]
+        marca = "~~" if f.acked else GLYPH.get(f.verdict.value, "  ")
         out.append(
-            f"{GLYPH.get(f.verdict.value, '  ')} {f.session.repo:<{width}} "
+            f"{marca} {f.session.repo:<{width}} "
             f"{f.session.state.value:<22} {sil}  {title:<30}  {f.reason}"
         )
     counts = report.by_verdict()
@@ -149,6 +189,8 @@ def render(report: Report, *, only_attention: bool = False) -> str:
     out.append(f"{len(report.findings)} sesiones | {summary}")
     if report.attention:
         out.append(f"{len(report.attention)} requieren atencion.")
+    if report.acked:
+        out.append(f"{len(report.acked)} silenciadas (~~). `moon-jules ack --list` para verlas.")
     return "\n".join(out)
 
 
@@ -192,8 +234,105 @@ async def cmd_status(cfg: Config, args: argparse.Namespace) -> int:
     async with JulesClient(cfg.api_key) as c:
         with Store(cfg.state_path) as store:
             report = await Monitor(c, cfg, store).cycle(execute=False)
-    print(render(report, only_attention=args.attention))
+    if args.all:
+        print(render(report))
+    else:
+        print(render(report, only_attention=args.attention))
     return 1 if report.attention else 0
+
+
+async def cmd_ack(cfg: Config, args: argparse.Namespace) -> int:
+    """Silencia hallazgos ya vistos. No arregla nada: los saca del radar."""
+    from .store import Store
+
+    with Store(cfg.state_path) as store:
+        if args.list:
+            filas = store.list_acks()
+            if not filas:
+                print("nada silenciado.")
+                return 0
+            for r in filas:
+                repo = (r["source"] or "").removeprefix("sources/").removeprefix("github/")
+                nota = f"  ({r['note']})" if r["note"] else ""
+                print(f"{r['verdict']:<20} {repo:<40} {r['acked_at'][:10]}{nota}")
+            return 0
+
+        if args.session:
+            async with JulesClient(cfg.api_key) as c:
+                report = await Monitor(c, cfg, store).cycle(execute=False)
+            objetivo = _norm_session(args.session)
+            match = [f for f in report.problems if f.session.name == objetivo]
+            if not match:
+                print(f"{objetivo} no tiene ningun hallazgo que silenciar.", file=sys.stderr)
+                return 1
+            f = match[0]
+            store.ack(f.session.name, f.verdict.value, now(), args.note)
+            print(f"silenciado {f.verdict.value} en {f.session.repo}")
+            return 0
+
+        # --stale-before: el caso de uso real, la deuda acumulada
+        corte = datetime.fromisoformat(args.stale_before).replace(tzinfo=UTC)
+        async with JulesClient(cfg.api_key) as c:
+            report = await Monitor(c, cfg, store).cycle(execute=False)
+        candidatas = [
+            f
+            for f in report.problems
+            if not f.acked
+            and f.session.update_time is not None
+            and f.session.update_time < corte
+        ]
+        if not candidatas:
+            print(f"nada sin tocar desde {args.stale_before}.")
+            return 0
+        print(f"{len(candidatas)} sesion(es) sin actividad desde {args.stale_before}:\n")
+        for f in candidatas:
+            print(f"  {f.verdict.value:<20} {f.session.repo:<38} {f.session.title or ''}"[:110])
+        if not args.yes:
+            print("\nAnade --yes para silenciarlas.")
+            return 0
+        for f in candidatas:
+            store.ack(f.session.name, f.verdict.value, now(), args.note or "deuda historica")
+        print(f"\n{len(candidatas)} silenciadas. Reaparecen si su veredicto cambia.")
+        return 0
+
+
+async def cmd_unack(cfg: Config, args: argparse.Namespace) -> int:
+    from .store import Store
+
+    with Store(cfg.state_path) as store:
+        n = store.unack(_norm_session(args.session))
+    print(f"{n} silenciamiento(s) retirado(s).")
+    return 0
+
+
+async def cmd_history(cfg: Config, args: argparse.Namespace) -> int:
+    from .store import Store
+
+    with Store(cfg.state_path) as store:
+        st = store.nudge_stats()
+        filas = store.session_rows()
+        print(f"sesiones conocidas      {len(filas)}")
+        print(f"nudges enviados         {st['total']}")
+        if st["total"]:
+            print(f"  respondidos           {st['answered']}")
+            print(f"  sin respuesta         {st['unanswered']}")
+            print(f"  pendientes            {st['pending']}")
+        if st["median_recovery_s"] is not None:
+            print(f"recuperacion mediana    {st['median_recovery_s']/60:.1f} min")
+        log = store.nudge_log(
+            _norm_session(args.session) if args.session else None, args.limit
+        )
+        if log:
+            print("\nultimos nudges:")
+            for r in log:
+                repo = (r["source"] or "").removeprefix("sources/").removeprefix("github/")
+                print(f"  {r['sent_at'][:16]}  {r['outcome']:<11} {repo:<38} "
+                      f"{(r['title'] or '')[:30]}")
+    return 0
+
+
+def _norm_session(x: str) -> str:
+    return x if x.startswith("sessions/") else f"sessions/{x}"
 
 
 async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
@@ -270,6 +409,9 @@ COMMANDS = {
     "sources": cmd_sources,
     "status": cmd_status,
     "watch": cmd_watch,
+    "ack": cmd_ack,
+    "unack": cmd_unack,
+    "history": cmd_history,
 }
 
 
@@ -297,6 +439,25 @@ def build_parser() -> argparse.ArgumentParser:
     st = sub.add_parser("status", parents=[common], help="una pasada de diagnostico")
     st.add_argument("-a", "--attention", action="store_true",
                     help="muestra solo lo que requiere atencion")
+    st.add_argument("--all", action="store_true",
+                    help="incluye tambien lo silenciado")
+
+    ak = sub.add_parser("ack", parents=[common],
+                        help="silencia hallazgos ya vistos (no los arregla)")
+    g = ak.add_mutually_exclusive_group(required=True)
+    g.add_argument("session", nargs="?", help="id de sesion a silenciar")
+    g.add_argument("--stale-before", metavar="YYYY-MM-DD",
+                   help="silencia todo lo sin actividad desde esa fecha")
+    g.add_argument("--list", action="store_true", help="lista lo ya silenciado")
+    ak.add_argument("--note", help="por que se silencia")
+    ak.add_argument("--yes", action="store_true", help="confirma el silenciado masivo")
+
+    ua = sub.add_parser("unack", parents=[common], help="revierte un silenciado")
+    ua.add_argument("session")
+
+    hi = sub.add_parser("history", parents=[common], help="historial local de nudges")
+    hi.add_argument("--session", help="filtra por sesion")
+    hi.add_argument("--limit", type=int, default=20)
     w = sub.add_parser("watch", parents=[common], help="bucle de vigilancia")
     w.add_argument("--dry-run", action="store_true",
                    help="dictamina sin ejecutar ninguna accion")

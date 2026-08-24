@@ -99,10 +99,22 @@ class Finding:
     silence_s: float | None
     reason: str
     downgraded_from: Action | None = None
+    acked: bool = False
+
+    @property
+    def is_problem(self) -> bool:
+        """Hay algo mal, se haya triado o no."""
+        return self.verdict is not Verdict.HEALTHY and self.verdict is not Verdict.DONE
 
     @property
     def needs_attention(self) -> bool:
-        return self.verdict is not Verdict.HEALTHY and self.verdict is not Verdict.DONE
+        """Hay algo mal y nadie lo ha dado por visto todavia.
+
+        El triaje no arregla la sesion: la saca del radar. Un veredicto
+        distinto sobre la misma sesion vuelve a aparecer, porque eso si
+        es informacion nueva.
+        """
+        return self.is_problem and not self.acked
 
 
 def freshness(activities: list[Activity]) -> Freshness:
@@ -246,6 +258,15 @@ class Report:
     @property
     def attention(self) -> list[Finding]:
         return [f for f in self.findings if f.needs_attention]
+
+    @property
+    def problems(self) -> list[Finding]:
+        """Todo lo que esta mal, incluido lo ya triado."""
+        return [f for f in self.findings if f.is_problem]
+
+    @property
+    def acked(self) -> list[Finding]:
+        return [f for f in self.findings if f.is_problem and f.acked]
 
     def by_verdict(self) -> dict[Verdict, int]:
         counts: dict[Verdict, int] = {}

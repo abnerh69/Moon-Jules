@@ -14,7 +14,7 @@ from pathlib import Path
 from .detector import NudgeRecord
 from .models import Session
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -48,6 +48,13 @@ CREATE TABLE IF NOT EXISTS notifications (
     session     TEXT NOT NULL,
     verdict     TEXT NOT NULL,
     notified_at TEXT NOT NULL,
+    PRIMARY KEY (session, verdict)
+);
+CREATE TABLE IF NOT EXISTS acks (
+    session  TEXT NOT NULL,
+    verdict  TEXT NOT NULL,
+    acked_at TEXT NOT NULL,
+    note     TEXT,
     PRIMARY KEY (session, verdict)
 );
 CREATE TABLE IF NOT EXISTS meta (
@@ -198,6 +205,96 @@ class Store:
 
     def daily_budget_left(self, usable: int, now: datetime) -> int:
         return max(0, usable - self.sessions_created_since(now - timedelta(hours=24)))
+
+    # ---------- triaje: silenciar lo ya visto ----------
+
+    def is_acked(self, session: str, verdict: str) -> bool:
+        return (
+            self.db.execute(
+                "SELECT 1 FROM acks WHERE session = ? AND verdict = ?", (session, verdict)
+            ).fetchone()
+            is not None
+        )
+
+    def acked_pairs(self) -> set[tuple[str, str]]:
+        """Todo el triaje de una vez: un SELECT por ciclo, no uno por sesion."""
+        return {
+            (r["session"], r["verdict"])
+            for r in self.db.execute("SELECT session, verdict FROM acks")
+        }
+
+    def ack(self, session: str, verdict: str, now: datetime, note: str | None = None) -> None:
+        self.db.execute(
+            "INSERT INTO acks(session, verdict, acked_at, note) VALUES (?,?,?,?) "
+            "ON CONFLICT(session, verdict) DO UPDATE SET "
+            "acked_at = excluded.acked_at, note = excluded.note",
+            (session, verdict, _iso(now), note),
+        )
+
+    def unack(self, session: str, verdict: str | None = None) -> int:
+        if verdict:
+            cur = self.db.execute(
+                "DELETE FROM acks WHERE session = ? AND verdict = ?", (session, verdict)
+            )
+        else:
+            cur = self.db.execute("DELETE FROM acks WHERE session = ?", (session,))
+        return cur.rowcount
+
+    def list_acks(self) -> list[sqlite3.Row]:
+        return list(
+            self.db.execute(
+                "SELECT a.session, a.verdict, a.acked_at, a.note, s.title, s.source "
+                "FROM acks a LEFT JOIN sessions s ON s.name = a.session "
+                "ORDER BY a.acked_at DESC"
+            )
+        )
+
+    # ---------- historial ----------
+
+    def nudge_log(self, session: str | None = None, limit: int = 50) -> list[sqlite3.Row]:
+        sql = (
+            "SELECT n.session, n.sent_at, n.verified_at, n.outcome, s.title, s.source "
+            "FROM nudges n LEFT JOIN sessions s ON s.name = n.session "
+        )
+        args: tuple = ()
+        if session:
+            sql += "WHERE n.session = ? "
+            args = (session,)
+        sql += "ORDER BY n.sent_at DESC LIMIT ?"
+        return list(self.db.execute(sql, (*args, limit)))
+
+    def nudge_stats(self) -> dict[str, float | int | None]:
+        """Cuantos nudges se enviaron, cuantos revivieron la sesion y en cuanto."""
+        row = self.db.execute(
+            "SELECT COUNT(*) AS total, "
+            "SUM(outcome = 'answered') AS answered, "
+            "SUM(outcome = 'unanswered') AS unanswered, "
+            "SUM(outcome = 'pending') AS pending "
+            "FROM nudges"
+        ).fetchone()
+        tiempos = [
+            (_dt(r["verified_at"]) - _dt(r["sent_at"])).total_seconds()
+            for r in self.db.execute(
+                "SELECT sent_at, verified_at FROM nudges WHERE outcome = 'answered' "
+                "AND verified_at IS NOT NULL"
+            )
+        ]
+        tiempos.sort()
+        return {
+            "total": row["total"] or 0,
+            "answered": row["answered"] or 0,
+            "unanswered": row["unanswered"] or 0,
+            "pending": row["pending"] or 0,
+            "median_recovery_s": tiempos[len(tiempos) // 2] if tiempos else None,
+        }
+
+    def session_rows(self) -> list[sqlite3.Row]:
+        return list(
+            self.db.execute(
+                "SELECT name, source, state, title, last_agent_at, last_agent_kind, seen_at "
+                "FROM sessions ORDER BY last_agent_at DESC"
+            )
+        )
 
     # ---------- supresion de notificaciones repetidas ----------
 

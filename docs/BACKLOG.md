@@ -37,12 +37,20 @@ entorno real ganando. `tests/test_no_secrets.py` barre el árbol entero
 en cada `pytest` con los mismos patrones que redactan los logs.
 Correctivo de un incidente: ver ADR-004.
 
-## Siguiente ola
+### E05 — `moon-jules history` *(entrega 04)*
+Sesiones conocidas, nudges enviados y su desenlace, recuperación
+mediana. Incluye el cierre del registro de nudges, que existía como
+método pero nunca se invocaba: se quedaban en `pending` para siempre y
+el canario del riesgo 5 no podía leerse.
 
-### E05 — `moon-jules history`
-Consulta del histórico local: sesiones vistas, nudges enviados y su
-resultado, tiempo medio de recuperación. Sale directo de SQLite.
-*Depende de: E01, E03.*
+### E13 — Triaje de la deuda acumulada *(entrega 04)*
+`ack` / `unack` / `status --all`. Épica añadida fuera del orden del
+backlog porque los datos la exigían: el enjambre tiene 25 sesiones
+muertas y sin triaje `watch` alertaría de las 25 en cada ciclo, para
+siempre. El triaje silencia el par (sesión, veredicto), no la sesión: si
+el veredicto cambia, reaparece.
+
+## Siguiente ola
 
 ## Ola de autonomía
 
