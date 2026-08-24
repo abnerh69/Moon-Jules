@@ -31,6 +31,12 @@ credencial.
 `flock` sobre `watch.lock`. Un segundo `watch` falla con mensaje claro
 en vez de duplicar nudges y gastar el presupuesto al doble de velocidad.
 
+### E03b — Secreto en `.env` y barrido automático *(entrega 03)*
+Carga de `.env` desde el directorio de configuración y el actual, con el
+entorno real ganando. `tests/test_no_secrets.py` barre el árbol entero
+en cada `pytest` con los mismos patrones que redactan los logs.
+Correctivo de un incidente: ver ADR-004.
+
 ## Siguiente ola
 
 ### E05 — `moon-jules history`

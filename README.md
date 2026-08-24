@@ -31,12 +31,25 @@ cp config.example.toml ~/.config/moon-jules/config.toml
 ```
 
 La API key se obtiene en https://jules.google.com/settings#api y **nunca
-se escribe en el config**: se referencia.
+se escribe en el config**: se referencia. El valor vive en un `.env` que
+no se versiona.
+
+```bash
+cp .env.example ~/.config/moon-jules/.env
+chmod 600 ~/.config/moon-jules/.env
+$EDITOR ~/.config/moon-jules/.env      # rellenar JULES_API_KEY
+
+moon-jules doctor
+```
+
+Alternativa sin fichero, para una sola sesión de shell:
 
 ```bash
 read -rs JULES_API_KEY && export JULES_API_KEY
-moon-jules doctor
 ```
+
+El entorno real siempre gana sobre el `.env`, así que puedes sobrescribir
+para una ejecución sin tocar nada.
 
 ## Uso
 
@@ -76,7 +89,8 @@ archiva sesiones. La lista completa de lo que no hará está en
 
 **v0.2.0 — `watch` desatendido.** Funcionan `doctor`, `sources`, `status`
 y `watch`, con detector calibrado, notificaciones nativas, logging con
-redacción de credenciales y lock de instancia única. 68 tests.
+redacción de credenciales, carga desde `.env` y lock de instancia única.
+80 tests, incluido un barrido de secretos sobre todo el árbol.
 
 `watch` ya se puede dejar corriendo en una pestaña y olvidarse: avisa por
 notificación del sistema, deja rastro en disco y no se pisa consigo mismo.

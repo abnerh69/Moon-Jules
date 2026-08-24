@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import multiprocessing as mp
+import os
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -28,7 +29,22 @@ from moon_jules.notify import (
 from moon_jules.store import Store
 
 NOW = datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
-KEY = "«redactado»"
+
+
+def fake(prefix: str, n: int = 32) -> str:
+    """Credencial sintetica: la forma de una real, ningun valor real.
+
+    Se construye por concatenacion a proposito. Asi el literal completo
+    nunca aparece escrito en el fuente y `test_no_secrets.py` puede
+    barrer el repo entero sin necesidad de una lista de excepciones —
+    que es justo por donde se cuela un secreto de verdad.
+
+    Nunca uses aqui una credencial real, ni siquiera una ya rotada.
+    """
+    return prefix + ("NOTAREALSECRET" * 4)[:n]
+
+
+KEY = fake("AQ.")
 
 
 # --------------------------------------------------------------------
@@ -43,10 +59,10 @@ def test_redacta_por_valor_exacto():
 def test_redacta_por_forma_aunque_no_conozca_el_valor():
     """Segunda linea de defensa: un secreto que llega por un camino nuevo."""
     for muestra in (
-        "AIzaSyD-1234567890abcdefghijklmnopqrstuv",
-        "AQ.Ab8RN6IO7grZEypQTPxbYENz3HAhr1S6SLKPKML3Q6pY",
-        "ghp_1234567890abcdefghijklmnopqrstuvwx",
-        "github_pat_11ABCDEFG0abcdefghijklmnop",
+        fake("AIza"),
+        fake("AQ."),
+        fake("ghp_"),
+        fake("github_pat_"),
     ):
         assert muestra not in redact(f"token: {muestra}")
 
@@ -280,3 +296,61 @@ def test_verbose_por_defecto_esta_apagado():
     from moon_jules.cli import build_parser
 
     assert getattr(build_parser().parse_args(["status"]), "verbose", False) is False
+
+
+# --------------------------------------------------------------------
+# carga de .env (ADR-004)
+# --------------------------------------------------------------------
+
+
+def test_dotenv_parsea_las_formas_habituales():
+    from moon_jules.config import _parse_dotenv
+
+    got = _parse_dotenv(
+        '# comentario\n'
+        'SIMPLE=valor\n'
+        'export CON_EXPORT=otro\n'
+        'ENTRECOMILLADA="con espacios"\n'
+        "SIMPLES='comillas simples'\n"
+        '\n'
+        'SIN_IGUAL\n'
+        'VACIA=\n'
+    )
+    assert got == {
+        "SIMPLE": "valor",
+        "CON_EXPORT": "otro",
+        "ENTRECOMILLADA": "con espacios",
+        "SIMPLES": "comillas simples",
+        "VACIA": "",
+    }
+
+
+def test_el_entorno_real_gana_sobre_el_dotenv(tmp_path, monkeypatch):
+    """Para poder sobrescribir en una ejecución sin editar ficheros."""
+    from moon_jules.config import load_dotenv
+
+    (tmp_path / ".env").write_text("MJ_TEST_VAR=del_fichero\n")
+    monkeypatch.setenv("MJ_TEST_VAR", "del_entorno")
+    monkeypatch.chdir(tmp_path)
+    load_dotenv()
+    assert os.environ["MJ_TEST_VAR"] == "del_entorno"
+
+
+def test_el_dotenv_rellena_lo_que_falta(tmp_path, monkeypatch):
+    from moon_jules.config import load_dotenv
+
+    (tmp_path / ".env").write_text("MJ_OTRA_VAR=del_fichero\n")
+    monkeypatch.delenv("MJ_OTRA_VAR", raising=False)
+    monkeypatch.chdir(tmp_path)
+    load_dotenv()
+    assert os.environ["MJ_OTRA_VAR"] == "del_fichero"
+
+
+def test_un_secreto_literal_en_el_config_es_error_de_arranque(tmp_path):
+    """La regla que este incidente demostró que hace falta de verdad."""
+    from moon_jules.config import ConfigError, load
+
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(f'[jules]\napi_key = "{fake("AQ.")}"\n')
+    with pytest.raises(ConfigError, match="secreto literal"):
+        load(cfg)

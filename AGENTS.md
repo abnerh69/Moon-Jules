@@ -130,13 +130,21 @@ sí lo es, y es público. Ante duda, consúltalo.
 ## Seguridad
 
 La API key **nunca** se escribe en el config, ni se acepta por argumento
-de CLI, ni aparece en un log. Se referencia (`env:` o `keychain:`) y se
+de CLI, ni aparece en un log, ni entra en un test. Se referencia (`env:`
+o `keychain:`), el valor vive en un `.env` que no se versiona, y se
 resuelve en arranque. Ver ADR-004.
 
-Si en algún momento necesitas una credencial real para probar algo:
-**no la pidas ni la inventes en un archivo.** Escribe el test contra el
-mock (`tools/mock_jules_api.py`) y deja el caso real documentado en el
-PR para que lo verifique el arquitecto.
+**Ningún fixture de test lleva una credencial real, ni siquiera una ya
+rotada.** Se construyen por concatenación con `fake()` en
+`tests/test_guardrails.py`: tienen la forma de una credencial sin tener
+ningún valor real, y así `tests/test_no_secrets.py` puede barrer el
+árbol entero sin lista de excepciones. Esa regla existe porque se
+incumplió una vez y el secreto llegó a GitHub.
+
+Si necesitas una credencial real para probar algo: **no la pidas ni la
+escribas en un archivo.** Prueba contra el mock
+(`tools/mock_jules_api.py`) y deja el caso real anotado para que lo
+verifique el arquitecto.
 
 ## Presupuesto
 

@@ -16,13 +16,67 @@ from pathlib import Path
 
 from .detector import Policy
 from .errors import ConfigError
+from .logs import get as get_logger
 from .models import AutonomyMode
+
+log = get_logger("config")
 
 CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "moon-jules"
 STATE_HOME = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "moon-jules"
 CONFIG_PATH = CONFIG_HOME / "config.toml"
+ENV_NAME = ".env"
 
 RESOLVERS = ("env:", "keychain:")
+
+
+def _parse_dotenv(text: str) -> dict[str, str]:
+    """Formato dotenv minimo: KEY=VALUE, comentarios y comillas opcionales."""
+    out: dict[str, str] = {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        line = line.removeprefix("export ").strip()
+        key, sep, value = line.partition("=")
+        if not sep:
+            continue
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        if key:
+            out[key] = value
+    return out
+
+
+def load_dotenv(extra: Path | None = None) -> list[Path]:
+    """Carga variables desde `.env` en el entorno del proceso.
+
+    Orden de busqueda: el directorio de configuracion primero, el
+    directorio actual despues (que puede sobrescribir al anterior). Una
+    variable ya presente en el entorno real **siempre gana**: asi se
+    puede sobrescribir para una sola ejecucion sin editar ficheros.
+
+    El `.env` nunca se versiona: esta en `.gitignore` desde el primer
+    commit y aqui se avisa si sus permisos son demasiado abiertos.
+    """
+    cargados: list[Path] = []
+    for path in (CONFIG_HOME / ENV_NAME, Path.cwd() / ENV_NAME, extra):
+        if path is None or not path.is_file():
+            continue
+        try:
+            modo = path.stat().st_mode
+        except OSError:
+            modo = 0
+        if modo & 0o077:
+            log.warning(
+                "%s es legible por otros usuarios; ajusta con: chmod 600 %s", path, path
+            )
+        for key, value in _parse_dotenv(path.read_text(encoding="utf-8")).items():
+            if key not in os.environ:  # el entorno real manda
+                os.environ[key] = value
+        cargados.append(path)
+    return cargados
 
 
 @dataclass(frozen=True)
@@ -87,7 +141,8 @@ def resolve_secret(ref: str, *, field_name: str = "api_key") -> str:
     if not ref.startswith(RESOLVERS):
         raise ConfigError(
             f"{field_name} parece un secreto literal. Usa una referencia: "
-            f'{field_name} = "env:JULES_API_KEY" o "keychain:moon-jules/jules". '
+            f'{field_name} = "env:JULES_API_KEY" o "keychain:moon-jules/jules", '
+            f"y pon el valor en {CONFIG_HOME / ENV_NAME} o en el entorno. "
             "Ver ADR-004."
         )
     kind, _, rest = ref.partition(":")
@@ -95,8 +150,9 @@ def resolve_secret(ref: str, *, field_name: str = "api_key") -> str:
         val = os.environ.get(rest, "")
         if not val:
             raise ConfigError(
-                f"la variable de entorno {rest} no esta definida. "
-                f"Exportala con: read -rs {rest} && export {rest}"
+                f"la variable de entorno {rest} no esta definida. Ponla en "
+                f"{CONFIG_HOME / ENV_NAME} (recomendado, no se versiona) o "
+                f"expórtala con: read -rs {rest} && export {rest}"
             )
         return val
     service, _, account = rest.partition("/")
@@ -121,7 +177,8 @@ def _policy_from(raw: dict, base: Policy) -> Policy:
     return replace(base, **known) if known else base
 
 
-def load(path: Path | None = None) -> Config:
+def load(path: Path | None = None, *, dotenv: Path | None = None) -> Config:
+    load_dotenv(dotenv)
     p = path or CONFIG_PATH
     if not p.exists():
         raise ConfigError(
