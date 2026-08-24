@@ -1,8 +1,9 @@
 # Contrato del snapshot
 
 ```meta
-Esquema:  1
-Desde:    Moon-Jules v0.9.0 (entrega 13)
+Esquema:  2
+Desde:    Moon-Jules v0.10.0 (entrega 14)
+Historia: 1 — entrega 13. 2 — añade `control` y `instance.role`.
 Estado:   Estable
 ```
 
@@ -20,6 +21,7 @@ que uno que dice "no entiendo esta versión".
 Con `publish.target = "rtdb"`, bajo la raíz configurada:
 
 ```
+{root}/control                              ← quién debe vigilar
 {root}/instances/{instance_id}/snapshot     ← este documento
 {root}/instances/{instance_id}/decisions    ← copia de seguridad
 ```
@@ -50,14 +52,21 @@ separa.
 
 ```json
 {
-  "schema": 1,
+  "schema": 2,
   "instance": {
-    "id": "mbp-boston",
-    "version": "0.9.0",
+    "id": "la-dorada",
+    "version": "0.10.0",
     "published_at": "2026-08-24T15:04:05Z",
     "cycle_interval_s": 300,
     "stale_after_s": 1200,
-    "mode": "unblock_only"
+    "mode": "unblock_only",
+    "role": "active"
+  },
+  "control": {
+    "desired": "la-dorada",
+    "claimed_by": "la-dorada",
+    "claimed_at": "2026-08-24T15:00:02Z",
+    "known": true
   },
   "swarm": {
     "sessions_total": 538,
@@ -99,6 +108,40 @@ separa.
 | `cycle_interval_s` | Cada cuánto se espera el siguiente. |
 | `stale_after_s` | Umbral recomendado de caducidad. |
 | `mode` | Modo de autonomía por defecto: `read_only` o `unblock_only`. |
+| `role` | `active` si esta máquina está vigilando de verdad; `standby` si observa pero no actúa. |
+
+### `control` — el relevo entre instancias
+
+Con tres portátiles y uno solo vigilando a la vez, el teléfono elige
+cuál. Y lo hace por **reclamación, no por asignación**.
+
+| Campo | Significado |
+|---|---|
+| `desired` | Quién *debería* vigilar. Lo escribe el teléfono. |
+| `claimed_by` | Quién *ha recogido* el encargo. Lo escribe la instancia. |
+| `claimed_at` | Cuándo lo recogió. |
+| `known` | `false` si esta instancia no pudo leer el control. No significa que no haya nadie designado. |
+
+**La app debe mostrar los dos, y alertar si difieren.** Escribir "ahora
+manda São Paulo" y darlo por hecho sería mostrar como vigilante una
+máquina que quizá está dormida y nunca leyó nada — la misma clase de
+mentira con autoridad que motiva este proyecto. Si `desired` no coincide
+con `claimed_by` pasados un par de ciclos, esa máquina está apagada y
+hay que elegir otra.
+
+Cuando `known` es `false`, esta instancia pasa a `standby` por
+seguridad. El presupuesto de nudges es por sesión, no por máquina: si
+tres actuaran a la vez lo agotarían en una sola pasada y la sesión
+recibiría el prompt triplicado. Ante la duda, callar.
+
+Una instancia en `standby` **sigue vigilando y publicando**: su latido
+dice que está viva y disponible para el relevo. Lo único que no hace es
+tocar Jules.
+
+No hay conmutación automática. Si la máquina activa muere, nadie la
+sustituye solo: la app lo muestra —latido caducado— y el arquitecto
+elige. Es una decisión deliberada; la elección automática es elección de
+líder, y eso trae arrendamientos y particiones que no caben en la v1.
 
 ### `swarm`
 
@@ -142,7 +185,8 @@ y lo problemático; las completadas sin novedad no viajan.
 | `blocked_feedback` | El agente hizo una pregunta y espera respuesta. |
 | `blocked_plan` | Hay un plan pendiente de aprobar. |
 | `queued_slow` | Lleva demasiado en cola: probable tope de concurrencia. |
-| `paused_stale` | Pausada y muda. El API no ofrece forma de reanudarla. |
+| `paused_stale` | Pausada y muda a media faena. El API no ofrece forma de reanudarla. |
+| `paused_done` | Pausada después de entregar el trabajo. Informativo, no urgente. |
 | `failed` | Falló. `reason` trae lo que declaró Jules. |
 | `nudge_unanswered` | Se le envió el prompt y no respondió. **El canario.** |
 | `nudge_budget_spent` | Se agotaron los intentos y se dejó de insistir. |
@@ -164,9 +208,5 @@ No hay canal de comandos. La app **lee**; no nudgea, no aprueba planes,
 no silencia. Abrir esa vía trae autenticación, idempotencia y órdenes que
 pueden ejecutarse dos veces, y no cabe en la primera versión.
 
-El relevo entre instancias —elegir cuál de los tres portátiles vigila—
-es una rama distinta del árbol, con su propio contrato, y llega en la
-entrega 14. Se diseñará como **reclamación y no como asignación**: el
-teléfono propone, la instancia elegida confirma, y la app muestra ambas
-cosas. Si el portátil designado está dormido, nadie recoge la orden, y
-una asignación sin confirmar mentiría con toda autoridad.
+El teléfono sí escribe una cosa, y solo una: `control/desired`. Ese es
+el alcance entero del canal de escritura, y conviene que siga siéndolo.

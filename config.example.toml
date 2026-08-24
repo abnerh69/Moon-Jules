@@ -39,6 +39,12 @@ decisions   = true          # sube triajes, pausas y nudges (unos KB)
 # root = "moonjules"
 # auth = "env:MOONJULES_RTDB_TOKEN"   # ADR-004: referencia, nunca literal
 
+[relay]
+# Relevo entre varias maquinas: solo una vigila a la vez y el telefono
+# elige cual. Requiere publish.target = "rtdb". Ver docs/SNAPSHOT.md
+enabled           = false
+active_by_default = false   # mientras nadie este designado, nadie actua
+
 [notify]
 enabled    = false   # requiere osascript (macOS) o notify-send (Linux)
 cooldown_s = 3600    # no repetir la misma alerta antes de esto

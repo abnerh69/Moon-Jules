@@ -317,3 +317,30 @@ def test_timestamps_del_api_se_parsean(raw: str):
 def test_estado_desconocido_no_tumba_el_loop():
     """El API esta en alpha: un estado nuevo no puede ser una excepcion."""
     assert SessionState.parse("ESTADO_DEL_FUTURO") is SessionState.UNSPECIFIED
+
+
+def test_una_sesion_pausada_no_se_reporta_como_sana():
+    """Encontrado en datos reales (entrega 13).
+
+    La congelación del reloj se evaluaba antes que el estado, así que
+    una sesión PAUSED cuyo último evento fue `sessionCompleted` salía
+    etiquetada `healthy` — como si el agente trabajara bien en ella. El
+    trabajo se entregó, sí, pero la sesión está pausada, y decir "sana"
+    en un panel es engañoso.
+    """
+    r = check(SessionState.PAUSED, Freshness(ago(days=124), "sessionCompleted"))
+    assert r.verdict is Verdict.PAUSED_DONE
+    assert r.action is Action.NONE
+    assert not r.needs_attention, "entregó el trabajo: informar, no alarmar"
+    assert not r.is_problem
+
+
+def test_una_sesion_en_curso_que_cerro_sigue_siendo_sana():
+    """El caso para el que se escribió la invariante no cambia."""
+    r = check(SessionState.IN_PROGRESS, Freshness(ago(hours=4), "sessionCompleted"))
+    assert r.verdict is Verdict.HEALTHY
+
+
+def test_una_pausada_muda_a_media_faena_sigue_alertando():
+    r = check(SessionState.PAUSED, Freshness(ago(days=97), "progressUpdated"))
+    assert r.verdict is Verdict.PAUSED_STALE

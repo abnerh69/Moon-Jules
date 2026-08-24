@@ -28,6 +28,7 @@ import platform
 import socket
 import tempfile
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -44,12 +45,41 @@ log = get_logger("publish")
 #: Versión del esquema. Se sube al añadir campos; se sube de mayor al
 #: quitar o cambiar el significado de uno. La app debe rechazar lo que
 #: no entienda en vez de interpretarlo a medias.
-SCHEMA = 1
+SCHEMA = 2
 
 #: Cuántas sesiones caben en el snapshot. Con el tope de 15 concurrentes
 #: del plan, 40 deja sitio de sobra para lo activo más lo que requiere
 #: atención, y acota lo que se sube en cada ciclo.
 MAX_SESIONES = 40
+
+
+@dataclass(frozen=True)
+class Control:
+    """Quien deberia estar vigilando, segun el punto de encuentro.
+
+    `desired` lo escribe el telefono; `claimed` lo escribe la instancia
+    que recoge el encargo. Se guardan por separado a proposito: si solo
+    hubiera uno, el telefono podria escribir "ahora manda Sao Paulo" y
+    mostrarlo como hecho aunque ese portatil estuviera dormido y nadie
+    hubiera recogido nada. Deseado y real son preguntas distintas, y la
+    app debe poder ver ambas.
+    """
+
+    desired: str | None = None
+    claimed_by: str | None = None
+    claimed_at: str | None = None
+    #: False si no se pudo leer el punto de encuentro.
+    known: bool = True
+
+    def role_for(self, instancia: str, *, por_defecto_activo: bool) -> str:
+        if not self.known:
+            # Ante la duda, callar. Que nadie actue es preferible a que
+            # actuen tres: el presupuesto de nudges es por sesion, no por
+            # maquina, y tres instancias lo agotarian en una pasada.
+            return "standby"
+        if self.desired is None:
+            return "active" if por_defecto_activo else "standby"
+        return "active" if self.desired == instancia else "standby"
 
 
 def instance_id(configurado: str | None = None) -> str:
@@ -78,6 +108,8 @@ def construir(
     modo: str,
     max_activas: int,
     nudges: dict[str, Any] | None = None,
+    control: Control | None = None,
+    role: str = "active",
 ) -> dict:
     """Arma el snapshot. Función pura: se prueba sin red ni ficheros."""
     nudges = nudges or {}
@@ -129,6 +161,15 @@ def construir(
             # nunca menos de 20 minutos. Así la app no lo codifica.
             "stale_after_s": max(20 * 60, 4 * intervalo_s),
             "mode": modo,
+            "role": role,
+        },
+        "control": {
+            "desired": control.desired if control else None,
+            "claimed_by": control.claimed_by if control else None,
+            "claimed_at": control.claimed_at if control else None,
+            # False significa que esta instancia no pudo leer el punto de
+            # encuentro, no que no haya nadie designado.
+            "known": control.known if control else True,
         },
         "swarm": {
             "sessions_total": len(report.findings),
@@ -235,6 +276,48 @@ class RtdbSink(Sink):
     async def publish(self, snapshot: dict) -> None:
         instancia = snapshot["instance"]["id"]
         await self._put(f"instances/{instancia}/snapshot", snapshot)
+
+    async def _get(self, ruta: str) -> Any:
+        params = {"auth": self._token} if self._token else {}
+        try:
+            r = await self._http.get(self._url(ruta), params=params)
+        except httpx.TransportError as exc:
+            raise MoonJulesError(f"no se pudo leer de RTDB: {exc}") from exc
+        if not r.is_success:
+            raise MoonJulesError(
+                f"RTDB rechazo la lectura de {self.root}/{ruta}: HTTP {r.status_code}"
+            )
+        return r.json()
+
+    async def read_control(self) -> Control:
+        """Lee quien deberia vigilar. Nunca levanta: la duda es un dato."""
+        try:
+            crudo = await self._get("control") or {}
+        except MoonJulesError as exc:
+            log.warning("no se pudo leer el control: %s", exc)
+            return Control(known=False)
+        if not isinstance(crudo, dict):
+            return Control(known=False)
+        return Control(
+            desired=crudo.get("desired") or None,
+            claimed_by=crudo.get("claimed_by") or None,
+            claimed_at=crudo.get("claimed_at") or None,
+        )
+
+    async def claim(self, instancia: str, ahora: datetime) -> None:
+        """Confirma que esta instancia recogio el encargo.
+
+        Es la mitad que convierte una asignacion en una reclamacion: sin
+        esto, la app mostraria como vigilada una maquina dormida.
+        """
+        await self._put(
+            "control/claimed_by", instancia
+        )
+        await self._put("control/claimed_at", _iso(ahora))
+
+    async def set_desired(self, instancia: str | None) -> None:
+        """Designa quien debe vigilar. Lo normal es que lo haga la app."""
+        await self._put("control/desired", instancia)
 
     async def publish_decisions(self, instancia: str, decisiones: dict) -> None:
         await self._put(f"instances/{instancia}/decisions", decisiones)

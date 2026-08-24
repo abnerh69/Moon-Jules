@@ -125,6 +125,23 @@ snapshot lleva un **latido** que se reescribe siempre, cambie o no el
 estado: así un lector puede distinguir "todo en orden" de "nadie está
 mirando". Contrato completo en `docs/SNAPSHOT.md`.
 
+### Varias máquinas, una vigilando
+
+```bash
+moon-jules relay                  # quién está designado y quién reclamó
+moon-jules relay la-dorada        # designa una instancia
+moon-jules relay --none           # retira la designación
+```
+
+Con `relay.enabled = true` y `publish.target = "rtdb"`, varias máquinas
+pueden ejecutar `watch` a la vez pero solo una actúa. Las demás siguen
+vigilando y publicando su latido —están vivas y disponibles—, sin tocar
+Jules.
+
+Designar es **proponer**: la instancia elegida confirma escribiendo su
+reclamación. Si designas una máquina dormida, nadie recoge el encargo y
+eso se ve. Lo normal es hacerlo desde la app.
+
 ### Historial
 
 ```bash
@@ -160,7 +177,7 @@ cierra issues, ni mergea PRs, ni cambia labels, ni archiva sesiones. La lista co
 y `watch`, con detector calibrado, notificaciones nativas, logging con
 redacción de credenciales, carga desde `.env`, lock de instancia única,
 triaje de hallazgos, historial local, interruptor de autonomía y
-recalibración del umbral. 189
+recalibración del umbral. 208
 tests, incluido un barrido de secretos sobre todo el árbol.
 
 `moon-jules doctor` mide la latencia real de tu API y proyecta el coste
@@ -176,9 +193,8 @@ notificación del sistema, deja rastro en disco y no se pisa consigo mismo.
 
 Publica su estado para lectores externos (`docs/SNAPSHOT.md`).
 
-Pendiente: relevo entre instancias, empaquetado, vigilancia del contrato
-del API y verificación de `sendMessage` sobre sesión terminal. Ver
-`docs/BACKLOG.md`.
+Pendiente: empaquetado, vigilancia del contrato del API y verificación
+de `sendMessage` sobre sesión terminal. Ver `docs/BACKLOG.md`.
 
 ## Documentación
 

@@ -120,6 +120,20 @@ class PublishConfig:
 
 
 @dataclass(frozen=True)
+class RelayConfig:
+    """Relevo entre instancias. Epica E21.
+
+    Solo tiene sentido con `publish.target = "rtdb"`: hace falta un punto
+    de encuentro que las tres maquinas y el telefono compartan.
+    """
+
+    enabled: bool = False
+    #: Que hacer mientras nadie ha designado a nadie. `false` es lo
+    #: prudente con varias maquinas: nadie actua hasta que se elija.
+    active_by_default: bool = False
+
+
+@dataclass(frozen=True)
 class NotifyConfig:
     enabled: bool = False
     cooldown_s: int = 3600
@@ -149,6 +163,7 @@ class Config:
     sources: dict[str, SourceConfig] = field(default_factory=dict)
     notify: NotifyConfig = field(default_factory=NotifyConfig)
     publish: PublishConfig = field(default_factory=PublishConfig)
+    relay: RelayConfig = field(default_factory=RelayConfig)
     state_path: Path = field(default=STATE_HOME / "state.db")
     log_dir: Path = field(default=STATE_HOME / "logs")
     lock_path: Path = field(default=STATE_HOME / "watch.lock")
@@ -276,6 +291,17 @@ def load(path: Path | None = None, *, dotenv: Path | None = None) -> Config:
     if publish.enabled and publish.target == "rtdb" and not publish.rtdb.url:
         raise ConfigError("publish.target = 'rtdb' pero falta publish.rtdb.url")
 
+    rel_raw = raw.get("relay") or {}
+    relay = RelayConfig(
+        enabled=bool(rel_raw.get("enabled", False)),
+        active_by_default=bool(rel_raw.get("active_by_default", False)),
+    )
+    if relay.enabled and publish.target != "rtdb":
+        raise ConfigError(
+            "relay.enabled requiere publish.target = 'rtdb': el relevo "
+            "necesita un punto de encuentro compartido."
+        )
+
     state = raw.get("state") or {}
     state_path = Path(state.get("path", STATE_HOME / "state.db")).expanduser()
     return Config(
@@ -291,6 +317,7 @@ def load(path: Path | None = None, *, dotenv: Path | None = None) -> Config:
         sources=sources,
         notify=notify,
         publish=publish,
+        relay=relay,
         state_path=state_path,
         log_dir=Path(state.get("log_dir", state_path.parent / "logs")).expanduser(),
         lock_path=state_path.parent / "watch.lock",

@@ -41,7 +41,15 @@ from .logs import configure as configure_logs
 from .logs import get as get_logger
 from .models import AutonomyMode, Session, SessionState
 from .notify import Notifier
-from .publish import FileSink, RtdbSink, Sink, StdoutSink, construir, instance_id
+from .publish import (
+    Control,
+    FileSink,
+    RtdbSink,
+    Sink,
+    StdoutSink,
+    construir,
+    instance_id,
+)
 from .store import GLOBAL_SCOPE, Store
 
 TERMINAL = {SessionState.COMPLETED, SessionState.FAILED}
@@ -62,6 +70,7 @@ GLYPH = {
     "blocked_plan": "??",
     "queued_slow": "..",
     "paused_stale": "!!",
+    "paused_done": "--",
     "failed": "XX",
     "nudge_unanswered": "!!",
     "nudge_budget_spent": "!!",
@@ -139,6 +148,7 @@ class Monitor:
         execute: bool = False,
         progress: Progress | None = None,
         full: bool = False,
+        standby: bool = False,
     ) -> Report:
         at = now()
         report = Report(at=at)
@@ -169,9 +179,12 @@ class Monitor:
             if s.state is SessionState.FAILED:
                 s = s.with_failure(conocidas.get(s.name) or self._reasons.get(s.name))
             src = self.config.for_source(s.source)
-            if pausas and (GLOBAL_SCOPE in pausas or s.source in pausas):
-                # La pausa degrada a read_only por el mismo camino que el
-                # modo configurado: ninguna escritura sale de aqui.
+            if standby or (pausas and (GLOBAL_SCOPE in pausas or s.source in pausas)):
+                # Tanto la pausa como el papel de reserva degradan a
+                # read_only por el mismo camino que el modo configurado:
+                # una sola via de escritura, ya probada. Una instancia en
+                # reserva sigue vigilando y publicando —su latido dice
+                # que esta viva y disponible—, pero no actua.
                 src = replace(src, mode=AutonomyMode.READ_ONLY)
             nudge = nudges.get(s.name)
             finding = assess(
@@ -569,7 +582,34 @@ def crear_sink(cfg: Config) -> Sink | None:
     raise ConfigError(f"publish.target desconocido: {destino!r}")
 
 
-async def publicar(cfg: Config, report: Report, store: object, sink: Sink) -> None:
+async def leer_control(cfg: Config, sink: Sink | None) -> tuple[Control, str]:
+    """Consulta quien debe vigilar y deduce el papel de esta instancia.
+
+    Devuelve tambien el rol para que el ciclo sepa si puede actuar. Sin
+    relevo configurado, esta instancia manda: es el caso de una sola
+    maquina, que es el que habia hasta ahora.
+    """
+    yo = instance_id(cfg.publish.instance_id)
+    if not cfg.relay.enabled or not isinstance(sink, RtdbSink):
+        return Control(), "active"
+    control = await sink.read_control()
+    rol = control.role_for(yo, por_defecto_activo=cfg.relay.active_by_default)
+    if rol == "active" and control.claimed_by != yo:
+        # La reclamacion: sin este acuse, la app mostraria como vigilada
+        # una maquina que quiza esta dormida y nunca leyo el encargo.
+        await sink.claim(yo, now())
+        control = replace(control, claimed_by=yo, claimed_at=iso_ahora())
+    return control, rol
+
+
+async def publicar(
+    cfg: Config,
+    report: Report,
+    store: object,
+    sink: Sink,
+    control: Control | None = None,
+    role: str = "active",
+) -> None:
     """Publica el snapshot y, si toca, las decisiones del arquitecto."""
     snap = construir(
         report,
@@ -579,6 +619,8 @@ async def publicar(cfg: Config, report: Report, store: object, sink: Sink) -> No
         modo=cfg.default_mode.value,
         max_activas=cfg.budgets.max_active_sessions,
         nudges=store.nudge_summary() if store else None,
+        control=control,
+        role=role,
     )
     await sink.publish(snap)
     if cfg.publish.decisions and store and isinstance(sink, RtdbSink):
@@ -598,7 +640,8 @@ async def cmd_publish(cfg: Config, args: argparse.Namespace) -> int:
                 execute=False, progress=Progress(), full=args.full
             )
         try:
-            await publicar(cfg, report, store, sink)
+            control, rol = await leer_control(cfg, sink)
+            await publicar(cfg, report, store, sink, control, rol)
         finally:
             await sink.aclose()
     if not args.stdout:
@@ -607,6 +650,37 @@ async def cmd_publish(cfg: Config, args: argparse.Namespace) -> int:
         )
         print(f"publicado en {destino}: {len(report.findings)} sesiones, "
               f"{len(report.attention)} requieren atencion.")
+    return 0
+
+
+async def cmd_relay(cfg: Config, args: argparse.Namespace) -> int:
+    """Consulta o cambia que instancia vigila. Lo normal es hacerlo desde
+    la app; esto existe para operar sin ella."""
+    if not cfg.relay.enabled:
+        print("relay.enabled = false en el config.", file=sys.stderr)
+        return 2
+    sink = crear_sink(cfg)
+    if not isinstance(sink, RtdbSink):
+        print("el relevo necesita publish.target = 'rtdb'.", file=sys.stderr)
+        return 2
+    yo = instance_id(cfg.publish.instance_id)
+    try:
+        if args.instance or args.none:
+            await sink.set_desired(None if args.none else args.instance)
+        control = await sink.read_control()
+    finally:
+        await sink.aclose()
+
+    print(f"esta maquina      {yo}")
+    print(f"designada         {control.desired or '(ninguna)'}")
+    print(f"ha reclamado      {control.claimed_by or '(nadie)'}"
+          f"{'  ' + control.claimed_at[:19] if control.claimed_at else ''}")
+    if control.desired and control.claimed_by != control.desired:
+        # Deseado y real difieren: la designada no ha recogido el
+        # encargo. Suele significar que esa maquina esta dormida.
+        print(f"\naviso       {control.desired} fue designada pero no ha "
+              f"reclamado.\n            Si no lo hace en un par de ciclos, "
+              f"probablemente este apagada.")
     return 0
 
 
@@ -784,7 +858,8 @@ async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
         return 3
     print(
         f"vigilando cada {cfg.poll_interval_s}s | N={cfg.policy.stall_after_s}s | "
-        f"{'ejecutando acciones' if execute else 'simulacion, sin escrituras'}\n"
+        f"{'ejecutando acciones' if execute else 'simulacion, sin escrituras'}"
+        f"{' | relevo activo' if cfg.relay.enabled else ''}\n"
         f"logs en {cfg.log_dir}\nCtrl+C para detener."
     )
     try:
@@ -793,6 +868,7 @@ async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
                 mon = Monitor(c, cfg, store)
                 sink = crear_sink(cfg)
                 ciclo = 0
+                rol_previo = ""
                 notifier = Notifier(
                     store,
                     enabled=cfg.notify.enabled,
@@ -813,8 +889,17 @@ async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
                             # terminada; un repaso completo periodico acota
                             # cuanto puede tardarse en notarlo.
                             completo = ciclo % cfg.full_refresh_every == 0
+                            control, rol = await leer_control(cfg, sink)
+                            if rol != rol_previo:
+                                log.info("papel de esta instancia: %s", rol)
+                                print(f"[{now():%H:%M:%S}] esta instancia pasa a "
+                                      f"{'ACTIVA' if rol == 'active' else 'RESERVA'}")
+                                rol_previo = rol
                             report = await mon.cycle(
-                                execute=execute, progress=Progress(), full=completo
+                                execute=execute,
+                                progress=Progress(),
+                                full=completo,
+                                standby=rol == "standby",
                             )
                             ciclo += 1
                             _emit(report, notifier)
@@ -822,7 +907,7 @@ async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
                                 # En cada ciclo, cambie o no el estado: el
                                 # latido es la mitad del valor del snapshot.
                                 try:
-                                    await publicar(cfg, report, store, sink)
+                                    await publicar(cfg, report, store, sink, control, rol)
                                 except MoonJulesError as exc:
                                     log.error("no se pudo publicar: %s", exc)
                         except MoonJulesError as exc:
@@ -870,6 +955,7 @@ COMMANDS = {
     "history": cmd_history,
     "calibrate": cmd_calibrate,
     "publish": cmd_publish,
+    "relay": cmd_relay,
     "pause": cmd_pause,
     "resume": cmd_resume,
 }
@@ -940,6 +1026,11 @@ def build_parser() -> argparse.ArgumentParser:
                     help="imprime el snapshot en vez de publicarlo")
     pu.add_argument("--full", action="store_true",
                     help="repagina el historial completo")
+
+    rl = sub.add_parser("relay", parents=[common],
+                        help="consulta o cambia que instancia vigila")
+    rl.add_argument("instance", nargs="?", help="designa esta instancia")
+    rl.add_argument("--none", action="store_true", help="retira la designacion")
 
     hi = sub.add_parser("history", parents=[common], help="historial local de nudges")
     hi.add_argument("--session", help="filtra por sesion")

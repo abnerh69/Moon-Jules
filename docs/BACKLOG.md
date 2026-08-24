@@ -96,11 +96,21 @@ el campo que permite detectar que el MacBook está dormido — una máquina
 muerta no puede avisar de que lo está, solo dejar de hablar. Destinos
 detrás de una interfaz pequeña: stdout, fichero o RTDB por REST.
 
-### E21 — Relevo entre instancias *(siguiente)*
-Elegir desde el móvil cuál de los tres portátiles vigila. Se diseña como
-**reclamación, no asignación**: el teléfono propone, la instancia
-confirma, y la app muestra deseado frente a real. Una asignación sin
-confirmar mentiría con autoridad si esa máquina está dormida.
+### E21 — Relevo entre instancias *(entrega 14)*
+El teléfono escribe `control/desired`; la instancia designada confirma
+escribiendo `claimed_by`. La app muestra ambos y alerta si difieren: una
+designación sin recoger significa máquina dormida. Quien no está
+designado pasa a `standby` —sigue vigilando y publicando, no actúa— y lo
+mismo ocurre si no puede leer el control, porque tres instancias
+actuando agotarían el presupuesto de nudges de una sesión en una sola
+pasada. Sin conmutación automática: eso es elección de líder y no cabe
+en la v1.
+
+### E22 — Sesión pausada reportada como sana *(entrega 14, correctivo)*
+Encontrado en datos reales. La congelación del reloj se evaluaba antes
+que el estado, así que una sesión `PAUSED` cuyo último evento fue
+`sessionCompleted` salía etiquetada `healthy`. Veredicto propio
+`paused_done`: informa sin alarmar, pero no miente.
 
 ## Siguiente ola
 

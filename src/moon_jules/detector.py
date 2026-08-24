@@ -51,6 +51,7 @@ class Verdict(StrEnum):
     BLOCKED_PLAN = "blocked_plan"
     QUEUED_SLOW = "queued_slow"
     PAUSED_STALE = "paused_stale"
+    PAUSED_DONE = "paused_done"
     FAILED = "failed"
     DONE = "done"
     NUDGE_UNANSWERED = "nudge_unanswered"
@@ -109,6 +110,10 @@ class Freshness:
         return (now - self.last_agent_at).total_seconds()
 
 
+#: Veredictos que no requieren nada de nadie.
+SIN_PROBLEMA = frozenset({Verdict.HEALTHY, Verdict.DONE, Verdict.PAUSED_DONE})
+
+
 @dataclass(frozen=True)
 class Finding:
     session: Session
@@ -122,7 +127,7 @@ class Finding:
     @property
     def is_problem(self) -> bool:
         """Hay algo mal, se haya triado o no."""
-        return self.verdict is not Verdict.HEALTHY and self.verdict is not Verdict.DONE
+        return self.verdict not in SIN_PROBLEMA
 
     @property
     def needs_attention(self) -> bool:
@@ -234,6 +239,17 @@ def assess(
     if fresh.clock_frozen:
         # Invariante 2 (ADR-002): sessionCompleted no es terminal en el
         # flujo de actividades. El tiempo tras el es ocio, no silencio.
+        #
+        # Pero el reloj congelado y el estado son cosas distintas, y
+        # confundirlas producia una mentira: una sesion PAUSED cuyo
+        # ultimo evento fue `sessionCompleted` salia etiquetada
+        # `healthy`, como si el agente estuviera trabajando bien en ella.
+        # El trabajo se entrego, si, pero la sesion esta pausada y decir
+        # "sana" en un panel es enganoso. Veredicto propio, sin alerta.
+        if st is SessionState.PAUSED:
+            return out(
+                Verdict.PAUSED_DONE, Action.NONE, "pausada tras entregar el trabajo"
+            )
         return out(Verdict.HEALTHY, Action.NONE, "en reposo tras cerrar trabajo")
 
     if sil is None:
