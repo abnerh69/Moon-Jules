@@ -1,0 +1,35 @@
+# Moon-Jules — configuracion de ejemplo.
+# Copiar a ~/.config/moon-jules/config.toml y ajustar.
+#
+# ADR-004: la credencial se REFERENCIA, nunca se escribe aqui.
+# Un valor literal es un error de arranque, no un aviso.
+
+[jules]
+api_key = "env:JULES_API_KEY"
+# alternativa en macOS:
+# api_key = "keychain:moon-jules/jules"
+
+[watch]
+poll_interval_s = 300      # ADR-001
+stall_after_s   = 900      # ADR-002: N = 15 min, calibrado en el Spike 01
+nudge_verify_s  = 600      # canario del prompt magico
+default_mode    = "read_only"   # ADR-005: la autonomia se gana, no se asume
+
+[budgets]
+# Topes del plan Jules in Pro.
+max_active_sessions  = 15
+daily_session_budget = 100
+reserve_for_manual   = 20   # cuota que Moon-Jules nunca toca
+
+[notify]
+enabled = false
+
+# Politica por source. El nombre es el `name` que devuelve `moon-jules sources`.
+# Todo lo que no se declare hereda de [watch].
+#
+# [sources."sources/github/Informatica-ASHware/CryptBot-V3"]
+# mode = "unblock_only"
+# starting_branch = "main"
+#
+# [sources."sources/github/abnerh69/Moon-Jules"]
+# mode = "read_only"        # el propio repo: se observa, no se toca

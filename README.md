@@ -1,3 +1,87 @@
 # Moon-Jules
 
-Moonitor Jules sessions
+*El monitor de tu enjambre. Para que Jules no se duerma sin que te enteres.*
+
+Moon-Jules vigila tus sesiones de [Jules](https://jules.google.com) en
+todos tus repositorios, detecta cuándo se quedan colgadas y las reactiva.
+Corre en tu máquina, en una pestaña de terminal. No hay servidor, no hay
+nube, no hay UI web.
+
+## El problema, en dos números
+
+Jules sano emite un evento cada **26 segundos**. Cuando se cuelga, la
+mediana hasta que un humano lo nota es de **52 minutos**, y el peor caso
+medido fue de 7.6 horas. Cada uno de esos intervalos congela la cola
+entera del repositorio.
+
+Moon-Jules lo detecta en **15 minutos**, con una tasa de falsa alarma del
+0.05%. Esos números salen de medir 3.749 huecos reales entre eventos y
+los 9 rescates manuales que el arquitecto hizo a mano
+(`docs/spikes/`), no de una heurística de pizarra.
+
+## Instalación
+
+```bash
+git clone git@github.com:abnerh69/Moon-Jules.git
+cd Moon-Jules
+pip install -e ".[dev]"
+
+mkdir -p ~/.config/moon-jules
+cp config.example.toml ~/.config/moon-jules/config.toml
+```
+
+La API key se obtiene en https://jules.google.com/settings#api y **nunca
+se escribe en el config**: se referencia.
+
+```bash
+read -rs JULES_API_KEY && export JULES_API_KEY
+moon-jules doctor
+```
+
+## Uso
+
+```bash
+moon-jules doctor          # verifica credencial, config y conectividad
+moon-jules sources         # repositorios conectados y su modo de autonomía
+moon-jules status          # una pasada: qué está vivo, bloqueado o colgado
+moon-jules status -a       # solo lo que requiere atención
+moon-jules watch           # el bucle de vigilancia, Ctrl+C para salir
+moon-jules watch --dry-run # dictamina sin ejecutar ninguna acción
+```
+
+`status` devuelve código 1 si algo requiere atención, así que sirve en un
+`cron` o en el prompt del shell.
+
+## Autonomía
+
+Tres modos, configurables **por repositorio**. El default es el más
+conservador; la autonomía se gana repo por repo cuando confías en lo que
+ves.
+
+| Modo | Qué hace |
+|---|---|
+| `read_only` | observa y avisa. Ninguna escritura. **Default.** |
+| `unblock_only` | además envía el prompt de continuación y aprueba planes propios |
+| `full_auto` | además asigna el siguiente issue de la cola |
+
+Moon-Jules nunca cierra issues, ni mergea PRs, ni cambia labels, ni
+archiva sesiones. La lista completa de lo que no hará está en
+`docs/02-MoonJules-Inception.md` §4.
+
+## Estado
+
+**v0.1.0 — detección y alerta.** Funcionan `doctor`, `sources`, `status`
+y `watch`, con el detector calibrado y su suite de 42 tests.
+
+Pendiente: `assign-next`, `pause`, `calibrate`, notificaciones nativas e
+integración con GitHub Issues. Ver `docs/BACKLOG.md`.
+
+## Documentación
+
+| Documento | Qué contiene |
+|---|---|
+| `docs/01-MoonJules-Problem-Brief.md` | el problema, medido |
+| `docs/02-MoonJules-Inception.md` | alcance y la NO list |
+| `docs/adr/` | las cinco decisiones y sus porqués |
+| `docs/spikes/` | de dónde salen los números |
+| `AGENTS.md` | contrato de trabajo para agentes en este repo |
