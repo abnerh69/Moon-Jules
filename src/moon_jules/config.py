@@ -110,6 +110,9 @@ class NotifyConfig:
 class Config:
     api_key: str
     poll_interval_s: int = 300
+    #: Peticiones de actividades en paralelo. El API no publica cuota
+    #: (ADR-001), asi que el limite es autoimpuesto y conservador.
+    max_concurrency: int = 5
     default_mode: AutonomyMode = AutonomyMode.READ_ONLY
     policy: Policy = field(default_factory=Policy)
     budgets: Budgets = field(default_factory=Budgets)
@@ -221,6 +224,7 @@ def load(path: Path | None = None, *, dotenv: Path | None = None) -> Config:
     return Config(
         api_key=api_key,
         poll_interval_s=int(watch.get("poll_interval_s", 300)),
+        max_concurrency=max(1, int(watch.get("max_concurrency", 5))),
         default_mode=default_mode,
         policy=base_policy,
         budgets=budgets,

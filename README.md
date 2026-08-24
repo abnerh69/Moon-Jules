@@ -82,6 +82,20 @@ Silenciar no arregla nada: saca el hallazgo del radar. Se silencia el par
 sesión silenciada como `paused_stale` que pase a `failed` vuelve a
 avisar.
 
+### Cortar la autonomía
+
+```bash
+moon-jules pause                          # todo a read_only, indefinido
+moon-jules pause --for 2h --reason "revisando PRs"
+moon-jules pause CryptBot-V3              # solo un repositorio
+moon-jules resume                         # o `resume CryptBot-V3`
+```
+
+Pausar **no apaga la detección**: sigue vigilando y avisando, solo deja
+de actuar. El estado pausado se anuncia en cada salida — una pausa
+silenciosa es peor que no tenerla. Con `--for` se levanta sola, que es
+el remedio contra el fallo real: olvidarse de reanudar.
+
 ### Historial
 
 ```bash
@@ -113,17 +127,20 @@ archiva sesiones. La lista completa de lo que no hará está en
 
 ## Estado
 
-**v0.3.0 — `watch` desatendido y triable.** Funcionan `doctor`, `sources`, `status`
+**v0.4.0 — `watch` desatendido, triable y con freno.** Funcionan `doctor`, `sources`, `status`
 y `watch`, con detector calibrado, notificaciones nativas, logging con
 redacción de credenciales, carga desde `.env`, lock de instancia única,
-triaje de hallazgos e historial local. 95 tests, incluido un barrido de
-secretos sobre todo el árbol.
+triaje de hallazgos, historial local e interruptor de autonomía. 132
+tests, incluido un barrido de secretos sobre todo el árbol.
+
+Sobre un enjambre de 538 sesiones con 9 activas, un ciclo cuesta 15
+peticiones y unos 3 segundos.
 
 `watch` ya se puede dejar corriendo en una pestaña y olvidarse: avisa por
 notificación del sistema, deja rastro en disco y no se pisa consigo mismo.
 
-Pendiente: `assign-next`, `pause`, `calibrate` e integración con GitHub
-Issues. Ver `docs/BACKLOG.md`.
+Pendiente: `assign-next`, `calibrate` e integración con GitHub Issues.
+Ver `docs/BACKLOG.md`.
 
 ## Documentación
 

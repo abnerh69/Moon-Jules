@@ -50,6 +50,18 @@ muertas y sin triaje `watch` alertaría de las 25 en cada ciclo, para
 siempre. El triaje silencia el par (sesión, veredicto), no la sesión: si
 el veredicto cambia, reaparece.
 
+### E08 — `moon-jules pause` / `resume` *(entrega 05)*
+Interruptor de autonomía, global o por source, con plazo opcional
+(`--for 2h`) que se levanta solo. El estado pausado se anuncia en cada
+salida. Pausar no apaga la detección: sigue vigilando, deja de actuar.
+Ver la enmienda de ADR-005.
+
+### E14 — Coste del ciclo *(entrega 06)*
+Correctivo nacido de la primera ejecución real contra 538 sesiones, que
+parecía colgada. Paralelismo acotado, caché de razones de fallo,
+lectura de nudges en bloque e indicador de progreso. Ver la nota de
+campo en ADR-001.
+
 ## Siguiente ola
 
 ## Ola de autonomía
@@ -66,11 +78,6 @@ la tabla `assignments`. Respeta los tres presupuestos de ADR-005: 15
 concurrentes, 100/día menos reserva, y verificación de que el source
 está en `full_auto`.
 *Depende de: E06. Riesgo alto: es la acción más consecuente del sistema.*
-
-### E08 — `moon-jules pause` / `resume`
-Interruptor general que conmuta todos los sources a `read_only` sin
-editar el config. Debe poder pararse la autonomía en un comando.
-*Depende de: E01.*
 
 ## Ola de robustez
 

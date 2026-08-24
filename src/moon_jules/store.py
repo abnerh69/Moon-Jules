@@ -14,7 +14,17 @@ from pathlib import Path
 from .detector import NudgeRecord
 from .models import Session
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 5
+
+#: Clave de la pausa que afecta a todos los sources.
+GLOBAL_SCOPE = "*"
+
+#: Migraciones hacia adelante para bases que ya existen. Las versiones
+#: 1-4 solo anadian tablas, que `CREATE TABLE IF NOT EXISTS` ya resuelve;
+#: la 5 es la primera que altera una tabla y necesita ejecutarse.
+MIGRATIONS: dict[int, tuple[str, ...]] = {
+    5: ("ALTER TABLE sessions ADD COLUMN failure_reason TEXT",),
+}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -27,6 +37,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     last_agent_at    TEXT,
     last_agent_kind  TEXT,
     activity_cursor  TEXT,
+    failure_reason   TEXT,
     seen_at          TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS nudges (
@@ -57,6 +68,12 @@ CREATE TABLE IF NOT EXISTS acks (
     note     TEXT,
     PRIMARY KEY (session, verdict)
 );
+CREATE TABLE IF NOT EXISTS pauses (
+    scope     TEXT PRIMARY KEY,
+    paused_at TEXT NOT NULL,
+    until     TEXT,
+    reason    TEXT
+);
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -81,9 +98,23 @@ class Store:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA foreign_keys=ON")
         self.db.executescript(SCHEMA)
-        # Las migraciones hasta hoy solo anaden tablas, y `CREATE TABLE
-        # IF NOT EXISTS` ya las aplica. Se registra la version para que
-        # una migracion futura que si toque datos sepa de donde parte.
+        self._migrate()
+
+    def _migrate(self) -> None:
+        """Lleva una base preexistente hasta SCHEMA_VERSION.
+
+        En una base nueva el SCHEMA ya trae todo, asi que solo se anota
+        la version: aplicar las migraciones ahi fallaria con "duplicate
+        column".
+        """
+        row = self.db.execute(
+            "SELECT value FROM meta WHERE key = 'schema_version'"
+        ).fetchone()
+        desde = int(row["value"]) if row else SCHEMA_VERSION
+        for version in sorted(MIGRATIONS):
+            if version > desde:
+                for sql in MIGRATIONS[version]:
+                    self.db.execute(sql)
         self.db.execute(
             "INSERT INTO meta(key, value) VALUES ('schema_version', ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -120,8 +151,9 @@ class Store:
             """
             INSERT INTO sessions
                 (name, source, state, title, url, created_at,
-                 last_agent_at, last_agent_kind, activity_cursor, seen_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?)
+                 last_agent_at, last_agent_kind, activity_cursor,
+                 failure_reason, seen_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(name) DO UPDATE SET
                 source=excluded.source,
                 state=excluded.state,
@@ -130,13 +162,28 @@ class Store:
                 last_agent_at=COALESCE(excluded.last_agent_at, sessions.last_agent_at),
                 last_agent_kind=COALESCE(excluded.last_agent_kind, sessions.last_agent_kind),
                 activity_cursor=COALESCE(excluded.activity_cursor, sessions.activity_cursor),
+                failure_reason=COALESCE(excluded.failure_reason, sessions.failure_reason),
                 seen_at=excluded.seen_at
             """,
             (
                 s.name, s.source, s.state.value, s.title, s.url, _iso(s.create_time),
-                _iso(last_agent_at), last_agent_kind, cursor, _iso(now),
+                _iso(last_agent_at), last_agent_kind, cursor, s.failure_reason, _iso(now),
             ),
         )
+
+    def failure_reasons(self) -> dict[str, str]:
+        """Razones de fallo ya conocidas.
+
+        FAILED es terminal: la razon no cambia nunca. Sin esta cache el
+        ciclo re-descargaba *todas* las actividades de cada sesion
+        fallida cada cinco minutos, para siempre.
+        """
+        return {
+            r["name"]: r["failure_reason"]
+            for r in self.db.execute(
+                "SELECT name, failure_reason FROM sessions WHERE failure_reason IS NOT NULL"
+            )
+        }
 
     def known_freshness(self, name: str) -> tuple[datetime | None, str | None]:
         row = self.db.execute(
@@ -158,6 +205,22 @@ class Store:
             return None
         sent = _dt(row["sent_at"])
         return NudgeRecord(sent_at=sent, count=int(row["n"])) if sent else None
+
+    def last_nudges(self) -> dict[str, NudgeRecord]:
+        """Todos los ultimos nudges de una vez.
+
+        Antes era una consulta por sesion: con 538 sesiones, 538
+        consultas por ciclo para leer una tabla con un punado de filas.
+        """
+        out: dict[str, NudgeRecord] = {}
+        for r in self.db.execute(
+            "SELECT session, MAX(sent_at) AS sent_at, COUNT(*) AS n "
+            "FROM nudges GROUP BY session"
+        ):
+            sent = _dt(r["sent_at"])
+            if sent:
+                out[r["session"]] = NudgeRecord(sent_at=sent, count=int(r["n"]))
+        return out
 
     def record_nudge(self, name: str, prompt: str, now: datetime) -> None:
         self.db.execute(
@@ -205,6 +268,45 @@ class Store:
 
     def daily_budget_left(self, usable: int, now: datetime) -> int:
         return max(0, usable - self.sessions_created_since(now - timedelta(hours=24)))
+
+    # ---------- pausa de autonomia ----------
+
+    def pause(
+        self,
+        scope: str,
+        now: datetime,
+        until: datetime | None = None,
+        reason: str | None = None,
+    ) -> None:
+        """`scope` es GLOBAL_SCOPE o el `name` de un source."""
+        self.db.execute(
+            "INSERT INTO pauses(scope, paused_at, until, reason) VALUES (?,?,?,?) "
+            "ON CONFLICT(scope) DO UPDATE SET paused_at = excluded.paused_at, "
+            "until = excluded.until, reason = excluded.reason",
+            (scope, _iso(now), _iso(until), reason),
+        )
+
+    def resume(self, scope: str) -> int:
+        return self.db.execute("DELETE FROM pauses WHERE scope = ?", (scope,)).rowcount
+
+    def active_pauses(self, now: datetime) -> dict[str, sqlite3.Row]:
+        """Pausas vigentes. Las vencidas se retiran al pasar por aqui.
+
+        Una pausa con `until` se auto-levanta: el modo de fallo que mas
+        preocupa no es olvidarse de pausar, es olvidarse de reanudar y
+        creer que la autonomia esta encendida cuando no lo esta.
+        """
+        vigentes: dict[str, sqlite3.Row] = {}
+        vencidas: list[str] = []
+        for row in self.db.execute("SELECT * FROM pauses"):
+            hasta = _dt(row["until"])
+            if hasta is not None and hasta <= now:
+                vencidas.append(row["scope"])
+            else:
+                vigentes[row["scope"]] = row
+        for scope in vencidas:
+            self.db.execute("DELETE FROM pauses WHERE scope = ?", (scope,))
+        return vigentes
 
     # ---------- triaje: silenciar lo ya visto ----------
 

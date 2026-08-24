@@ -14,9 +14,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import re
 import sys
-from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from . import __version__
@@ -36,12 +37,19 @@ from .errors import ConfigError, MoonJulesError
 from .lock import AlreadyRunningError, InstanceLock
 from .logs import configure as configure_logs
 from .logs import get as get_logger
-from .models import Session, SessionState
+from .models import AutonomyMode, Session, SessionState
 from .notify import Notifier
+from .store import GLOBAL_SCOPE, Store
 
 TERMINAL = {SessionState.COMPLETED, SessionState.FAILED}
 
 log = get_logger("cli")
+
+#: Se guarda cuando ya se busco la razon de un fallo y no habia ninguna.
+#: Sin este centinela, una sesion FAILED sin actividad `sessionFailed`
+#: se re-consultaria en cada ciclo para siempre: en el enjambre real,
+#: 4 de cada 11 fallidas no declaran razon.
+SIN_RAZON = "(sin razon declarada)"
 
 GLYPH = {
     "healthy": "ok",
@@ -61,6 +69,20 @@ def now() -> datetime:
     return datetime.now(UTC)
 
 
+DURACION = re.compile(r"^\s*(\d+)\s*([smhd])\s*$", re.IGNORECASE)
+UNIDADES = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+
+
+def parse_duracion(texto: str) -> timedelta:
+    """`30m`, `2h`, `1d`. Explicito a proposito: un numero suelto es ambiguo."""
+    m = DURACION.match(texto)
+    if not m:
+        raise ValueError(
+            f"duracion invalida: {texto!r}. Usa un numero y una unidad: 30m, 2h, 1d."
+        )
+    return timedelta(seconds=int(m.group(1)) * UNIDADES[m.group(2).lower()])
+
+
 def humano(segundos: float | None) -> str:
     """Duracion legible. `136800m` no le dice nada a nadie; `95d` si."""
     if segundos is None:
@@ -74,6 +96,39 @@ def humano(segundos: float | None) -> str:
     return f"{h/24:4.0f}d"
 
 
+class Progress:
+    """Avisa por stderr de que el ciclo sigue vivo.
+
+    Con 538 sesiones el primer `status` tarda decenas de segundos, y sin
+    señal de vida el usuario concluye —razonablemente— que se colgó. Es
+    la misma lección del proyecto entero: el silencio no distingue entre
+    trabajar y estar muerto.
+
+    Va a stderr y solo si es una terminal, para no ensuciar tuberias ni
+    logs. Se borra la linea al terminar: es andamio, no salida.
+    """
+
+    def __init__(self, *, enabled: bool = True, stream: object | None = None) -> None:
+        self.stream = stream or sys.stderr
+        self.enabled = enabled and bool(getattr(self.stream, "isatty", lambda: False)())
+        self._ancho = 0
+
+    def step(self, texto: str) -> None:
+        if not self.enabled:
+            return
+        linea = f"  {texto}…"
+        self.stream.write("\r" + linea.ljust(self._ancho))
+        self.stream.flush()
+        self._ancho = max(self._ancho, len(linea))
+
+    def done(self) -> None:
+        if not self.enabled:
+            return
+        self.stream.write("\r" + " " * self._ancho + "\r")
+        self.stream.flush()
+        self._ancho = 0
+
+
 @dataclass
 class Monitor:
     """Un ciclo de vigilancia. ADR-001: poll global + actividades incrementales."""
@@ -81,18 +136,44 @@ class Monitor:
     client: JulesClient
     config: Config
     store: object | None = None  # Store, opcional para `status` en seco
+    _reasons: dict[str, str | None] = field(default_factory=dict)
 
-    async def cycle(self, *, execute: bool = False) -> Report:
+    async def cycle(self, *, execute: bool = False, progress: Progress | None = None) -> Report:
         at = now()
         report = Report(at=at)
+        prog = progress or Progress(enabled=False)
+
+        prog.step("consultando sesiones")
         sessions = await self.client.sessions()
+
         acked = self.store.acked_pairs() if self.store else set()
+        nudges = self.store.last_nudges() if self.store else {}
+        conocidas = self.store.failure_reasons() if self.store else {}
+        pausas = self.store.active_pauses(at) if self.store else {}
+        report.paused = {k: (r["reason"] or "") for k, r in pausas.items()}
+
+        # Solo las no terminales necesitan red: sobre COMPLETED y FAILED
+        # el reloj estaria congelado igualmente (ADR-002), y la razon de
+        # fallo, si hace falta, se busca una sola vez y se cachea.
+        pendientes = [
+            s
+            for s in sessions
+            if s.state not in TERMINAL
+            or (s.state is SessionState.FAILED and s.name not in conocidas)
+        ]
+        prog.step(f"{len(sessions)} sesiones, consultando {len(pendientes)}")
+        datos = await self._gather(pendientes, prog)
+
         for s in sessions:
-            fresh, cursor = await self._freshness(s)
-            if s.state is SessionState.FAILED and not s.failure_reason:
-                s = s.with_failure(await self._failure_reason(s))
+            fresh, cursor = datos.get(s.name) or self._offline_freshness(s)
+            if s.state is SessionState.FAILED:
+                s = s.with_failure(conocidas.get(s.name) or self._reasons.get(s.name))
             src = self.config.for_source(s.source)
-            nudge = self.store.last_nudge(s.name) if self.store else None
+            if pausas and (GLOBAL_SCOPE in pausas or s.source in pausas):
+                # La pausa degrada a read_only por el mismo camino que el
+                # modo configurado: ninguna escritura sale de aqui.
+                src = replace(src, mode=AutonomyMode.READ_ONLY)
+            nudge = nudges.get(s.name)
             finding = assess(
                 s, fresh, at, policy=src.policy, mode=src.mode, nudge=nudge
             )
@@ -111,7 +192,50 @@ class Monitor:
                 )
             if execute:
                 await self._act(finding, src.policy, at)
+        prog.done()
         return report
+
+    async def _gather(
+        self, sesiones: list[Session], prog: Progress
+    ) -> dict[str, tuple[Freshness, str | None]]:
+        """Consulta actividades en paralelo, con el paralelismo acotado.
+
+        El API no publica cuota (ADR-001), asi que el limite es
+        autoimpuesto y conservador. Secuencial era peor de lo necesario:
+        con nueve sesiones activas, nueve viajes de ida y vuelta en fila.
+        """
+        self._reasons = {}
+        if not sesiones:
+            return {}
+        sem = asyncio.Semaphore(self.config.max_concurrency)
+        hechas = 0
+        total = len(sesiones)
+
+        async def una(s: Session) -> tuple[str, tuple[Freshness, str | None]]:
+            nonlocal hechas
+            async with sem:
+                if s.state is SessionState.FAILED:
+                    self._reasons[s.name] = await self._failure_reason(s)
+                    resultado = (s.name, self._offline_freshness(s))
+                else:
+                    resultado = (s.name, await self._freshness(s))
+                hechas += 1
+                prog.step(f"actividades {hechas}/{total}")
+                return resultado
+
+        return dict(await asyncio.gather(*(una(s) for s in sesiones)))
+
+    def _offline_freshness(self, s: Session) -> tuple[Freshness, str | None]:
+        """Frescura sin red, para sesiones terminales y ya cacheadas."""
+        if s.state in TERMINAL:
+            kind = (
+                "sessionCompleted" if s.state is SessionState.COMPLETED else "sessionFailed"
+            )
+            return Freshness(s.update_time, kind), None
+        if self.store:
+            prev_at, prev_kind = self.store.known_freshness(s.name)
+            return Freshness(prev_at, prev_kind), None
+        return Freshness(), None
 
     def _close_nudge(self, f: Finding, nudge, fresh: Freshness, at: datetime) -> None:
         """Cierra el registro del ultimo nudge cuando ya se sabe si sirvio.
@@ -126,15 +250,7 @@ class Monitor:
             self.store.resolve_nudge(f.session.name, "unanswered", at)
 
     async def _freshness(self, s: Session) -> tuple[Freshness, str | None]:
-        """Frescura de una sesion. Las terminales no se consultan.
-
-        Sobre COMPLETED/FAILED el reloj estaria congelado igualmente
-        (ADR-002), asi que pedir sus actividades seria gastar cuota para
-        no cambiar nada.
-        """
-        if s.state in TERMINAL:
-            kind = "sessionCompleted" if s.state is SessionState.COMPLETED else "sessionFailed"
-            return Freshness(s.update_time, kind), None
+        """Frescura de una sesion no terminal, leyendo solo lo nuevo."""
         cursor = self.store.cursor_for(s.name) if self.store else None
         acts = await self.client.activities(s.name, after=cursor)
         fresh = freshness(acts)
@@ -145,12 +261,12 @@ class Monitor:
         newest = max((a.create_time for a in acts if a.create_time), default=None)
         return fresh, newest.isoformat().replace("+00:00", "Z") if newest else cursor
 
-    async def _failure_reason(self, s: Session) -> str | None:
+    async def _failure_reason(self, s: Session) -> str:
         acts = await self.client.activities(s.name, limit=None)
         for a in reversed(acts):
-            if a.kind == "sessionFailed":
+            if a.kind == "sessionFailed" and a.text:
                 return a.text
-        return None
+        return SIN_RAZON
 
     async def _act(self, f: Finding, policy: Policy, at: datetime) -> None:
         if f.action is Action.NUDGE:
@@ -166,10 +282,21 @@ class Monitor:
 # ---------- presentacion ----------
 
 
+def banner_pausa(report: Report) -> list[str]:
+    """Una pausa silenciosa es peor que no tenerla: se avisa siempre."""
+    if not report.paused:
+        return []
+    if GLOBAL_SCOPE in report.paused:
+        motivo = report.paused[GLOBAL_SCOPE]
+        return [f"** AUTONOMIA PAUSADA (global){f': {motivo}' if motivo else ''} **", ""]
+    nombres = [k.removeprefix("sources/").removeprefix("github/") for k in report.paused]
+    return [f"** AUTONOMIA PAUSADA en {len(nombres)}: {', '.join(nombres)} **", ""]
+
+
 def render(report: Report, *, only_attention: bool = False) -> str:
     rows = report.attention if only_attention else report.findings
     if not rows:
-        return "sin sesiones que reportar."
+        return "\n".join([*banner_pausa(report), "sin sesiones que reportar."])
     rows = sorted(rows, key=lambda f: (not f.needs_attention, f.session.repo))
     width = min(34, max((len(f.session.repo) for f in rows), default=10))
     out = []
@@ -181,6 +308,7 @@ def render(report: Report, *, only_attention: bool = False) -> str:
             f"{marca} {f.session.repo:<{width}} "
             f"{f.session.state.value:<22} {sil}  {title:<30}  {f.reason}"
         )
+    out = [*banner_pausa(report), *out]
     counts = report.by_verdict()
     summary = "  ".join(
         f"{k.value}={v}" for k, v in sorted(counts.items(), key=lambda x: x[0].value)
@@ -206,6 +334,13 @@ async def cmd_doctor(cfg: Config, args: argparse.Namespace) -> int:
     print(f"topes       {cfg.budgets.max_active_sessions} concurrentes, "
           f"{cfg.budgets.usable_daily} sesiones/dia utilizables")
     print(f"estado      {cfg.state_path}")
+    with Store(cfg.state_path) as store:
+        pausas = store.active_pauses(now())
+    if pausas:
+        for scope, row in pausas.items():
+            donde = "global" if scope == GLOBAL_SCOPE else scope
+            hasta = f" hasta {row['until'][:16]}" if row["until"] else " indefinida"
+            print(f"PAUSA       {donde}{hasta}  {row['reason'] or ''}")
     async with JulesClient(cfg.api_key) as c:
         src = await c.sources()
         ses = await c.sessions()
@@ -229,11 +364,11 @@ async def cmd_sources(cfg: Config, args: argparse.Namespace) -> int:
 
 
 async def cmd_status(cfg: Config, args: argparse.Namespace) -> int:
-    from .store import Store
-
     async with JulesClient(cfg.api_key) as c:
         with Store(cfg.state_path) as store:
-            report = await Monitor(c, cfg, store).cycle(execute=False)
+            report = await Monitor(c, cfg, store).cycle(
+                execute=False, progress=Progress()
+            )
     if args.all:
         print(render(report))
     else:
@@ -243,8 +378,6 @@ async def cmd_status(cfg: Config, args: argparse.Namespace) -> int:
 
 async def cmd_ack(cfg: Config, args: argparse.Namespace) -> int:
     """Silencia hallazgos ya vistos. No arregla nada: los saca del radar."""
-    from .store import Store
-
     with Store(cfg.state_path) as store:
         if args.list:
             filas = store.list_acks()
@@ -297,17 +430,54 @@ async def cmd_ack(cfg: Config, args: argparse.Namespace) -> int:
 
 
 async def cmd_unack(cfg: Config, args: argparse.Namespace) -> int:
-    from .store import Store
-
     with Store(cfg.state_path) as store:
         n = store.unack(_norm_session(args.session))
     print(f"{n} silenciamiento(s) retirado(s).")
     return 0
 
 
-async def cmd_history(cfg: Config, args: argparse.Namespace) -> int:
-    from .store import Store
+async def cmd_pause(cfg: Config, args: argparse.Namespace) -> int:
+    """Corta la autonomia sin abrir un editor. ADR-005."""
+    hasta = None
+    if args.for_:
+        try:
+            hasta = now() + parse_duracion(args.for_)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+    scope = _norm_source(args.source) if args.source else GLOBAL_SCOPE
+    with Store(cfg.state_path) as store:
+        store.pause(scope, now(), hasta, args.reason)
+    donde = "toda la autonomia" if scope == GLOBAL_SCOPE else scope
+    cuando = f" hasta {hasta:%Y-%m-%d %H:%M UTC}" if hasta else " indefinidamente"
+    print(f"pausado: {donde}{cuando}.")
+    if not hasta:
+        print("Recuerda `moon-jules resume`. Con --for se levanta sola.")
+    return 0
 
+
+async def cmd_resume(cfg: Config, args: argparse.Namespace) -> int:
+    scope = _norm_source(args.source) if args.source else GLOBAL_SCOPE
+    with Store(cfg.state_path) as store:
+        n = store.resume(scope)
+        restantes = store.active_pauses(now())
+    if not n:
+        print(f"{'la autonomia global' if scope == GLOBAL_SCOPE else scope} no estaba pausada.")
+    else:
+        print(f"reanudado: {'toda la autonomia' if scope == GLOBAL_SCOPE else scope}.")
+    if restantes:
+        nombres = ", ".join(
+            k.removeprefix("sources/").removeprefix("github/") for k in restantes
+        )
+        print(f"siguen pausados: {nombres}")
+    return 0
+
+
+def _norm_source(x: str) -> str:
+    return x if x.startswith("sources/") else f"sources/github/{x}"
+
+
+async def cmd_history(cfg: Config, args: argparse.Namespace) -> int:
     with Store(cfg.state_path) as store:
         st = store.nudge_stats()
         filas = store.session_rows()
@@ -336,8 +506,6 @@ def _norm_session(x: str) -> str:
 
 
 async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
-    from .store import Store
-
     execute = not args.dry_run
     try:
         lock = InstanceLock(cfg.lock_path).acquire()
@@ -369,7 +537,9 @@ async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
                     while True:
                         started = asyncio.get_event_loop().time()
                         try:
-                            report = await mon.cycle(execute=execute)
+                            report = await mon.cycle(
+                                execute=execute, progress=Progress()
+                            )
                             _emit(report, notifier)
                         except MoonJulesError as exc:
                             log.error("error de ciclo: %s", exc)
@@ -412,6 +582,8 @@ COMMANDS = {
     "ack": cmd_ack,
     "unack": cmd_unack,
     "history": cmd_history,
+    "pause": cmd_pause,
+    "resume": cmd_resume,
 }
 
 
@@ -454,6 +626,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     ua = sub.add_parser("unack", parents=[common], help="revierte un silenciado")
     ua.add_argument("session")
+
+    pa = sub.add_parser("pause", parents=[common],
+                        help="corta la autonomia; todo pasa a read_only")
+    pa.add_argument("source", nargs="?",
+                    help="un source concreto; sin argumento, todos")
+    pa.add_argument("--for", dest="for_", metavar="DURACION",
+                    help="se levanta sola: 30m, 2h, 1d")
+    pa.add_argument("--reason", help="por que se pausa")
+
+    re_ = sub.add_parser("resume", parents=[common], help="reanuda la autonomia")
+    re_.add_argument("source", nargs="?")
 
     hi = sub.add_parser("history", parents=[common], help="historial local de nudges")
     hi.add_argument("--session", help="filtra por sesion")

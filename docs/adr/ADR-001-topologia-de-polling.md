@@ -34,9 +34,31 @@ Parámetros:
   `pageSize=100`, solo para sesiones en estado no terminal.
 - Cursor persistido por sesión (ADR-003).
 
-Coste por ciclo: `1 + sesiones_no_terminales` requests. Con el tope de
-15 concurrentes del plan Pro, el techo es de 16 requests cada 5 minutos,
-unos 192 por hora.
+Coste por ciclo: `paginas_de_sesiones + sesiones_no_terminales`. Con 538
+sesiones son 6 paginas, y con el tope de 15 concurrentes del plan Pro,
+hasta 21 requests cada 5 minutos: unos 250 por hora.
+
+**Nota de campo (entrega 06).** La primera ejecucion real contra 538
+sesiones tardaba tanto que parecia colgada. Tres correcciones, todas con
+test que las fija:
+
+- Las peticiones de actividades van **en paralelo**, con el paralelismo
+  acotado por `max_concurrency` (default 5). Se usaba `asyncio` sin
+  aprovechar nada de su concurrencia.
+- La razon de fallo de una sesion `FAILED` **se cachea en SQLite**. Es
+  terminal: no cambia nunca, y se re-descargaban todas sus actividades
+  en cada ciclo. Se guarda un centinela cuando no hay razon declarada,
+  porque si no las 4 de cada 11 que no la declaran se reconsultaban para
+  siempre.
+- Los ultimos nudges se leen **en una sola consulta** en vez de una por
+  sesion.
+
+Efecto medido con latencia de 350 ms por peticion sobre un enjambre como
+el real: ciclo estable de 26 a 15 peticiones, y de 9.3 a 2.9 segundos.
+
+El suelo restante son las 6 paginas de `sessions.list`, que son
+inevitablemente secuenciales: cada pagina necesita el token de la
+anterior.
 
 ## Consecuencias
 
