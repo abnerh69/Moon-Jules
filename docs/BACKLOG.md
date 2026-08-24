@@ -10,32 +10,28 @@ exponer mejor sobre automatizar más.
 
 ## Entregado
 
-### E01 — Núcleo de detección
+### E01 — Núcleo de detección *(entrega 01)*
 Cliente del API, modelos, detector calibrado, persistencia SQLite,
 config con secretos por referencia, y los comandos `doctor`, `sources`,
 `status`, `watch`. 42 tests.
 
-## Siguiente ola — observabilidad antes que autonomía
+### E02 — Notificaciones nativas *(entrega 02)*
+`osascript` en macOS, `notify-send` en Linux, backend nulo en el resto
+con degradación silenciosa. Supresión de repetidos por (sesión,
+veredicto) con ventana configurable: sin ella, una sesión colgada
+avisaría doce veces por hora y el arquitecto silenciaría todo.
 
-### E02 — Notificaciones nativas
-`osascript` en macOS, `notify-send` en Linux, detección de plataforma y
-degradación silenciosa si no hay ninguna. Solo para hallazgos que
-requieren atención, con supresión de repetidos: la misma sesión colgada
-no debe notificar cada 5 minutos.
-*Depende de: E01. Toca: `notify.py`, `cli.py`.*
+### E03 — Logging con redacción *(entrega 02)*
+Logger con rotación a `~/.local/state/moon-jules/logs/`. La redacción
+vive en el *formatter*, no en un filtro, para alcanzar también los
+tracebacks. Doble defensa: por valor exacto y por forma conocida de
+credencial.
 
-### E03 — Logging con redacción
-Logger a `~/.local/state/moon-jules/logs/` con rotación. **Filtro de
-redacción obligatorio** (ADR-004): cualquier cadena que contenga una
-credencial resuelta se sustituye antes de escribir, incluidas URLs y
-volcados de error del cliente. Test que lo demuestre.
-*Depende de: E01. Toca: `logging.py`, `client.py`.*
+### E04 — Lock de instancia única *(entrega 02)*
+`flock` sobre `watch.lock`. Un segundo `watch` falla con mensaje claro
+en vez de duplicar nudges y gastar el presupuesto al doble de velocidad.
 
-### E04 — Lock de instancia única
-`watch` toma un lock de archivo al arrancar y falla con mensaje claro si
-ya hay otro corriendo. Sin esto, dos `watch` simultáneos duplican nudges
-y corrompen contadores (ADR-003).
-*Depende de: E01. Toca: `store.py`, `cli.py`.*
+## Siguiente ola
 
 ### E05 — `moon-jules history`
 Consulta del histórico local: sesiones vistas, nudges enviados y su

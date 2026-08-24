@@ -47,7 +47,11 @@ moon-jules status          # una pasada: qué está vivo, bloqueado o colgado
 moon-jules status -a       # solo lo que requiere atención
 moon-jules watch           # el bucle de vigilancia, Ctrl+C para salir
 moon-jules watch --dry-run # dictamina sin ejecutar ninguna acción
+moon-jules -v status       # con logging en detalle por consola
 ```
+
+Los logs de `watch` van a `~/.local/state/moon-jules/logs/`, con rotación
+y **redacción de credenciales**: ninguna API key llega al disco.
 
 `status` devuelve código 1 si algo requiere atención, así que sirve en un
 `cron` o en el prompt del shell.
@@ -70,11 +74,15 @@ archiva sesiones. La lista completa de lo que no hará está en
 
 ## Estado
 
-**v0.1.0 — detección y alerta.** Funcionan `doctor`, `sources`, `status`
-y `watch`, con el detector calibrado y su suite de 42 tests.
+**v0.2.0 — `watch` desatendido.** Funcionan `doctor`, `sources`, `status`
+y `watch`, con detector calibrado, notificaciones nativas, logging con
+redacción de credenciales y lock de instancia única. 68 tests.
 
-Pendiente: `assign-next`, `pause`, `calibrate`, notificaciones nativas e
-integración con GitHub Issues. Ver `docs/BACKLOG.md`.
+`watch` ya se puede dejar corriendo en una pestaña y olvidarse: avisa por
+notificación del sistema, deja rastro en disco y no se pisa consigo mismo.
+
+Pendiente: `assign-next`, `pause`, `history`, `calibrate` e integración
+con GitHub Issues. Ver `docs/BACKLOG.md`.
 
 ## Documentación
 

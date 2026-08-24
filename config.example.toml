@@ -22,7 +22,8 @@ daily_session_budget = 100
 reserve_for_manual   = 20   # cuota que Moon-Jules nunca toca
 
 [notify]
-enabled = false
+enabled    = false   # requiere osascript (macOS) o notify-send (Linux)
+cooldown_s = 3600    # no repetir la misma alerta antes de esto
 
 # Politica por source. El nombre es el `name` que devuelve `moon-jules sources`.
 # Todo lo que no se declare hereda de [watch].
@@ -33,3 +34,7 @@ enabled = false
 #
 # [sources."sources/github/abnerh69/Moon-Jules"]
 # mode = "read_only"        # el propio repo: se observa, no se toca
+
+[state]
+# path    = "~/.local/state/moon-jules/state.db"
+# log_dir = "~/.local/state/moon-jules/logs"

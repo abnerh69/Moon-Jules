@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -23,9 +24,15 @@ from .client import JulesClient
 from .config import CONFIG_PATH, Config, load
 from .detector import Action, Finding, Freshness, Policy, Report, assess, freshness
 from .errors import ConfigError, MoonJulesError
+from .lock import AlreadyRunningError, InstanceLock
+from .logs import configure as configure_logs
+from .logs import get as get_logger
 from .models import Session, SessionState
+from .notify import Notifier
 
 TERMINAL = {SessionState.COMPLETED, SessionState.FAILED}
+
+log = get_logger("cli")
 
 GLYPH = {
     "healthy": "ok",
@@ -108,10 +115,12 @@ class Monitor:
 
     async def _act(self, f: Finding, policy: Policy, at: datetime) -> None:
         if f.action is Action.NUDGE:
+            log.info("nudge -> %s (%s): %s", f.session.repo, f.session.id, f.reason)
             await self.client.send_message(f.session.name, policy.nudge_prompt)
             if self.store:
                 self.store.record_nudge(f.session.name, policy.nudge_prompt, at)
         elif f.action is Action.APPROVE_PLAN:
+            log.info("aprobando plan de %s (%s)", f.session.repo, f.session.id)
             await self.client.approve_plan(f.session.name)
 
 
@@ -191,32 +200,69 @@ async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
     from .store import Store
 
     execute = not args.dry_run
+    try:
+        lock = InstanceLock(cfg.lock_path).acquire()
+    except AlreadyRunningError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 3
     print(
         f"vigilando cada {cfg.poll_interval_s}s | N={cfg.policy.stall_after_s}s | "
         f"{'ejecutando acciones' if execute else 'simulacion, sin escrituras'}\n"
-        "Ctrl+C para detener."
+        f"logs en {cfg.log_dir}\nCtrl+C para detener."
     )
-    async with JulesClient(cfg.api_key) as c:
-        with Store(cfg.state_path) as store:
-            mon = Monitor(c, cfg, store)
-            try:
-                while True:
-                    started = asyncio.get_event_loop().time()
-                    try:
-                        report = await mon.cycle(execute=execute)
-                        stamp = report.at.strftime("%H:%M:%S")
-                        att = render(report, only_attention=True)
-                        if report.attention:
-                            print(f"\n[{stamp}]\n{att}")
-                        else:
-                            print(f"[{stamp}] {len(report.findings)} sesiones, todo en orden")
-                    except MoonJulesError as exc:
-                        print(f"[{now():%H:%M:%S}] error de ciclo: {exc}", file=sys.stderr)
-                    elapsed = asyncio.get_event_loop().time() - started
-                    await asyncio.sleep(max(0.0, cfg.poll_interval_s - elapsed))
-            except (KeyboardInterrupt, asyncio.CancelledError):
-                print("\ndetenido.")
+    try:
+        async with JulesClient(cfg.api_key) as c:
+            with Store(cfg.state_path) as store:
+                mon = Monitor(c, cfg, store)
+                notifier = Notifier(
+                    store,
+                    enabled=cfg.notify.enabled,
+                    cooldown_s=cfg.notify.cooldown_s,
+                )
+                log.info(
+                    "watch iniciado: intervalo=%ss N=%ss modo=%s notificaciones=%s",
+                    cfg.poll_interval_s,
+                    cfg.policy.stall_after_s,
+                    cfg.default_mode.value,
+                    notifier.backend.name if cfg.notify.enabled else "off",
+                )
+                try:
+                    while True:
+                        started = asyncio.get_event_loop().time()
+                        try:
+                            report = await mon.cycle(execute=execute)
+                            _emit(report, notifier)
+                        except MoonJulesError as exc:
+                            log.error("error de ciclo: %s", exc)
+                            print(f"[{now():%H:%M:%S}] error de ciclo: {exc}", file=sys.stderr)
+                        elapsed = asyncio.get_event_loop().time() - started
+                        await asyncio.sleep(max(0.0, cfg.poll_interval_s - elapsed))
+                except (KeyboardInterrupt, asyncio.CancelledError):
+                    log.info("watch detenido por el usuario")
+                    print("\ndetenido.")
+    finally:
+        lock.release()
     return 0
+
+
+def _emit(report: Report, notifier: Notifier) -> None:
+    stamp = report.at.strftime("%H:%M:%S")
+    if report.attention:
+        print(f"\n[{stamp}]\n{render(report, only_attention=True)}")
+        for f in report.attention:
+            log.warning(
+                "%s %s (%s): %s",
+                f.verdict.value,
+                f.session.repo,
+                f.session.id,
+                f.reason,
+            )
+        n = notifier.notify_findings(report.attention, report.at)
+        if n:
+            log.info("%d notificacion(es) enviada(s)", n)
+    else:
+        print(f"[{stamp}] {len(report.findings)} sesiones, todo en orden")
+        log.info("ciclo limpio: %d sesiones", len(report.findings))
 
 
 COMMANDS = {
@@ -228,16 +274,30 @@ COMMANDS = {
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="moon-jules", description="Monitor de tu enjambre de Jules.")
+    # `-v` se declara en el padre y se repite en cada subcomando con
+    # SUPPRESS para que funcione en las dos posiciones: `moon-jules -v
+    # watch` y `moon-jules watch -v`. Sin SUPPRESS, el default del
+    # subparser sobrescribiria el valor puesto antes del subcomando.
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument(
+        "-v", "--verbose", action="store_true", default=argparse.SUPPRESS,
+        help="logging en detalle por consola",
+    )
+    p = argparse.ArgumentParser(
+        prog="moon-jules", description="Monitor de tu enjambre de Jules.", parents=[common]
+    )
     p.add_argument("--version", action="version", version=f"moon-jules {__version__}")
     p.add_argument("--config", type=Path, default=None, help="ruta a config.toml")
+    # Nada de set_defaults sobre `verbose`: `parents=` comparte el objeto
+    # accion entre padre y subcomandos, y set_defaults lo mutaria,
+    # anulando el SUPPRESS. El default se aplica al leerlo, en main().
     sub = p.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("doctor", help="verifica credencial, config y conectividad")
-    sub.add_parser("sources", help="lista repositorios conectados")
-    st = sub.add_parser("status", help="una pasada de diagnostico")
+    sub.add_parser("doctor", parents=[common], help="verifica credencial, config y conectividad")
+    sub.add_parser("sources", parents=[common], help="lista repositorios conectados")
+    st = sub.add_parser("status", parents=[common], help="una pasada de diagnostico")
     st.add_argument("-a", "--attention", action="store_true",
                     help="muestra solo lo que requiere atencion")
-    w = sub.add_parser("watch", help="bucle de vigilancia")
+    w = sub.add_parser("watch", parents=[common], help="bucle de vigilancia")
     w.add_argument("--dry-run", action="store_true",
                    help="dictamina sin ejecutar ninguna accion")
     return p
@@ -245,11 +305,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    verbose = getattr(args, "verbose", False)
     try:
         cfg = load(args.config)
     except ConfigError as exc:
         print(f"configuracion: {exc}", file=sys.stderr)
         return 2
+    configure_logs(
+        secrets=cfg.secrets,
+        log_dir=cfg.log_dir if args.cmd == "watch" else None,
+        level=logging.DEBUG if verbose else logging.INFO,
+        console=verbose,
+    )
     try:
         return asyncio.run(COMMANDS[args.cmd](cfg, args))
     except KeyboardInterrupt:

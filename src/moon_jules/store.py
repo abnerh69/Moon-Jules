@@ -14,7 +14,7 @@ from pathlib import Path
 from .detector import NudgeRecord
 from .models import Session
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -44,6 +44,12 @@ CREATE TABLE IF NOT EXISTS assignments (
     source      TEXT NOT NULL,
     assigned_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS notifications (
+    session     TEXT NOT NULL,
+    verdict     TEXT NOT NULL,
+    notified_at TEXT NOT NULL,
+    PRIMARY KEY (session, verdict)
+);
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -68,8 +74,12 @@ class Store:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA foreign_keys=ON")
         self.db.executescript(SCHEMA)
+        # Las migraciones hasta hoy solo anaden tablas, y `CREATE TABLE
+        # IF NOT EXISTS` ya las aplica. Se registra la version para que
+        # una migracion futura que si toque datos sepa de donde parte.
         self.db.execute(
-            "INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', ?)",
+            "INSERT INTO meta(key, value) VALUES ('schema_version', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (str(SCHEMA_VERSION),),
         )
 
@@ -188,3 +198,27 @@ class Store:
 
     def daily_budget_left(self, usable: int, now: datetime) -> int:
         return max(0, usable - self.sessions_created_since(now - timedelta(hours=24)))
+
+    # ---------- supresion de notificaciones repetidas ----------
+
+    def should_notify(self, session: str, verdict: str, now: datetime, cooldown_s: int) -> bool:
+        """False si ya se notifico esto mismo dentro de la ventana.
+
+        La clave es (sesion, veredicto): si una sesion pasa de STALLED a
+        NUDGE_UNANSWERED, eso si es noticia nueva y vuelve a avisar.
+        """
+        row = self.db.execute(
+            "SELECT notified_at FROM notifications WHERE session = ? AND verdict = ?",
+            (session, verdict),
+        ).fetchone()
+        if not row:
+            return True
+        last = _dt(row["notified_at"])
+        return last is None or (now - last).total_seconds() >= cooldown_s
+
+    def record_notification(self, session: str, verdict: str, now: datetime) -> None:
+        self.db.execute(
+            "INSERT INTO notifications(session, verdict, notified_at) VALUES (?,?,?) "
+            "ON CONFLICT(session, verdict) DO UPDATE SET notified_at = excluded.notified_at",
+            (session, verdict, _iso(now)),
+        )

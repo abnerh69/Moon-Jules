@@ -89,9 +89,15 @@ python -m mypy src
 
 **Tests.** El detector (`src/moon_jules/detector.py`) es el núcleo
 calibrado: cualquier cambio ahí necesita un test que demuestre el caso
-nuevo, y los 33 existentes deben seguir verdes. Los tests que mencionan
-el Spike 01 protegen hallazgos medidos; si uno falla, la respuesta casi
+nuevo, y los existentes deben seguir verdes. Los tests que mencionan el
+Spike 01 protegen hallazgos medidos; si uno falla, la respuesta casi
 nunca es ajustar el test.
+
+**La redacción de logs no se toca sin un test que la respalde.** Es el
+único mecanismo del proyecto cuyo fallo es irreversible: una credencial
+escrita en disco ya no se desescribe. Vive en el *formatter* y no en un
+filtro a propósito, porque un filtro no ve los tracebacks. Si mueves esa
+lógica, `tests/test_guardrails.py` tiene que seguir pasando entero.
 
 **Estilo.** Líneas de 100. Español en comentarios y docstrings, inglés en
 identificadores. Los comentarios explican *por qué*, no *qué* — el

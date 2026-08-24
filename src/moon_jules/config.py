@@ -47,6 +47,12 @@ class Budgets:
 
 
 @dataclass(frozen=True)
+class NotifyConfig:
+    enabled: bool = False
+    cooldown_s: int = 3600
+
+
+@dataclass(frozen=True)
 class Config:
     api_key: str
     poll_interval_s: int = 300
@@ -54,8 +60,10 @@ class Config:
     policy: Policy = field(default_factory=Policy)
     budgets: Budgets = field(default_factory=Budgets)
     sources: dict[str, SourceConfig] = field(default_factory=dict)
-    notify: bool = False
+    notify: NotifyConfig = field(default_factory=NotifyConfig)
     state_path: Path = field(default=STATE_HOME / "state.db")
+    log_dir: Path = field(default=STATE_HOME / "logs")
+    lock_path: Path = field(default=STATE_HOME / "watch.lock")
 
     def for_source(self, source: str | None) -> SourceConfig:
         if source and source in self.sources:
@@ -145,7 +153,14 @@ def load(path: Path | None = None) -> Config:
             policy=_policy_from(sraw, base_policy),
         )
 
+    n = raw.get("notify") or {}
+    notify = NotifyConfig(
+        enabled=bool(n.get("enabled", False)),
+        cooldown_s=int(n.get("cooldown_s", 3600)),
+    )
+
     state = raw.get("state") or {}
+    state_path = Path(state.get("path", STATE_HOME / "state.db")).expanduser()
     return Config(
         api_key=api_key,
         poll_interval_s=int(watch.get("poll_interval_s", 300)),
@@ -153,6 +168,8 @@ def load(path: Path | None = None) -> Config:
         policy=base_policy,
         budgets=budgets,
         sources=sources,
-        notify=bool((raw.get("notify") or {}).get("enabled", False)),
-        state_path=Path(state.get("path", STATE_HOME / "state.db")).expanduser(),
+        notify=notify,
+        state_path=state_path,
+        log_dir=Path(state.get("log_dir", state_path.parent / "logs")).expanduser(),
+        lock_path=state_path.parent / "watch.lock",
     )
