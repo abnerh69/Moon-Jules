@@ -36,6 +36,7 @@ from .detector import (
     humano,
 )
 from .errors import ConfigError, MoonJulesError, NotFoundError
+from .gauth import ServiceAccountAuth, StaticTokenAuth
 from .lock import AlreadyRunningError, InstanceLock
 from .logs import configure as configure_logs
 from .logs import get as get_logger
@@ -578,7 +579,13 @@ def crear_sink(cfg: Config) -> Sink | None:
     if destino == "file":
         return FileSink(cfg.publish.path)
     if destino == "rtdb":
-        return RtdbSink(cfg.publish.rtdb.url, cfg.publish.rtdb.root, cfg.publish.rtdb.token)
+        r = cfg.publish.rtdb
+        auth = (
+            ServiceAccountAuth(r.service_account, uid=r.uid)
+            if r.service_account
+            else StaticTokenAuth(r.token)
+        )
+        return RtdbSink(r.url, r.root, auth=auth)
     raise ConfigError(f"publish.target desconocido: {destino!r}")
 
 

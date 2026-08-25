@@ -112,6 +112,14 @@ que el estado, así que una sesión `PAUSED` cuyo último evento fue
 `sessionCompleted` salía etiquetada `healthy`. Veredicto propio
 `paused_done`: informa sin alarmar, pero no miente.
 
+### E23 — Autenticación con cuenta de servicio *(entrega 15)*
+El database secret entra como administrador y salta las reglas: con él,
+"el teléfono solo escribe `control/desired`" lo sostenía este código y
+no la base de datos. Con cuenta de servicio y `auth_variable_override`,
+las instancias escriben bajo una identidad acotada y las reglas se les
+aplican. El token va en cabecera, se renueva solo y no viaja en la URL.
+Guía y reglas en `docs/RTDB.md`.
+
 ## Siguiente ola
 
 ## Retirado

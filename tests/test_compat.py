@@ -82,3 +82,22 @@ def test_la_configuracion_de_ruff_apunta_a_la_version_minima():
     máquina del arquitecto."""
     datos = tomllib.loads((ROOT / "pyproject.toml").read_text())
     assert datos["tool"]["ruff"]["target-version"] == "py{}{}".format(*version_minima())
+
+
+def test_cada_comando_tiene_su_subparser_y_al_reves():
+    """Un comando implementado pero no registrado no existe para el usuario.
+
+    Es un fallo silencioso: la suite pasa entera, el código está ahí, y
+    la CLI responde "invalid choice". Solo se descubre al teclearlo.
+    """
+    from moon_jules.cli import COMMANDS, build_parser
+
+    sub = next(
+        a
+        for a in build_parser()._actions
+        if getattr(a, "choices", None) and "doctor" in a.choices
+    )
+    registrados = set(sub.choices)
+    implementados = set(COMMANDS)
+    assert implementados - registrados == set(), "implementado pero sin subparser"
+    assert registrados - implementados == set(), "en el parser pero sin manejador"

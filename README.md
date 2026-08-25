@@ -123,7 +123,8 @@ moon-jules publish              # segun [publish] del config
 `watch` publica en cada ciclo cuando `publish.enabled = true`. El
 snapshot lleva un **latido** que se reescribe siempre, cambie o no el
 estado: así un lector puede distinguir "todo en orden" de "nadie está
-mirando". Contrato completo en `docs/SNAPSHOT.md`.
+mirando". Contrato completo en `docs/SNAPSHOT.md`; montaje de Firebase y reglas de
+seguridad en `docs/RTDB.md`.
 
 ### Varias máquinas, una vigilando
 
@@ -177,7 +178,7 @@ cierra issues, ni mergea PRs, ni cambia labels, ni archiva sesiones. La lista co
 y `watch`, con detector calibrado, notificaciones nativas, logging con
 redacción de credenciales, carga desde `.env`, lock de instancia única,
 triaje de hallazgos, historial local, interruptor de autonomía y
-recalibración del umbral. 208
+recalibración del umbral. 221
 tests, incluido un barrido de secretos sobre todo el árbol.
 
 `moon-jules doctor` mide la latencia real de tu API y proyecta el coste

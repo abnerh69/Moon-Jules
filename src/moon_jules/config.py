@@ -104,7 +104,13 @@ class Budgets:
 class RtdbConfig:
     url: str = ""
     root: str = "moonjules"
+    #: Database secret. Legado: administrador y salta las reglas.
     token: str = ""
+    #: Ruta a la clave JSON de la cuenta de servicio. Preferida.
+    service_account: Path | None = None
+    #: Identidad bajo la que escriben las instancias, para que las
+    #: reglas de seguridad se les apliquen. Ver docs/RTDB.md.
+    uid: str = "moonjules-writer"
 
 
 @dataclass(frozen=True)
@@ -286,10 +292,22 @@ def load(path: Path | None = None, *, dotenv: Path | None = None) -> Config:
             url=rtdb_raw.get("url", ""),
             root=rtdb_raw.get("root", "moonjules"),
             token=token,
+            service_account=(
+                Path(rtdb_raw["service_account"]).expanduser()
+                if rtdb_raw.get("service_account")
+                else None
+            ),
+            uid=rtdb_raw.get("uid", "moonjules-writer"),
         ),
     )
-    if publish.enabled and publish.target == "rtdb" and not publish.rtdb.url:
-        raise ConfigError("publish.target = 'rtdb' pero falta publish.rtdb.url")
+    if publish.enabled and publish.target == "rtdb":
+        if not publish.rtdb.url:
+            raise ConfigError("publish.target = 'rtdb' pero falta publish.rtdb.url")
+        if not publish.rtdb.service_account and not publish.rtdb.token:
+            raise ConfigError(
+                "publish.rtdb necesita `service_account` (recomendado) o "
+                "`auth` (database secret, obsoleto). Ver docs/RTDB.md."
+            )
 
     rel_raw = raw.get("relay") or {}
     relay = RelayConfig(

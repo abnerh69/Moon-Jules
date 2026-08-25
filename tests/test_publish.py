@@ -230,7 +230,7 @@ def test_el_token_de_rtdb_no_aparece_en_el_error():
         run(sink.publish(snap()))
     run(sink.aclose())
     assert "SECRETO-QUE-NO-DEBE-SALIR" not in str(exc.value)
-    assert "reglas de seguridad" in str(exc.value)
+    assert "Revisa el token" in str(exc.value)
 
 
 def test_un_fallo_de_red_no_es_una_excepcion_cruda():

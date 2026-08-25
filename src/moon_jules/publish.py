@@ -38,6 +38,7 @@ import httpx
 from . import __version__
 from .detector import Report
 from .errors import MoonJulesError
+from .gauth import RtdbAuth, StaticTokenAuth
 from .logs import get as get_logger
 
 log = get_logger("publish")
@@ -244,23 +245,26 @@ class RtdbSink(Sink):
         self,
         url: str,
         root: str,
-        token: str,
+        token: str = "",
         *,
+        auth: RtdbAuth | None = None,
         client: httpx.AsyncClient | None = None,
         timeout: float = 20.0,
     ) -> None:
         self.base = url.rstrip("/")
         self.root = root.strip("/")
-        self._token = token
+        self.auth = auth or StaticTokenAuth(token)
         self._http = client or httpx.AsyncClient(timeout=timeout)
 
     def _url(self, ruta: str) -> str:
         return f"{self.base}/{self.root}/{ruta}.json"
 
     async def _put(self, ruta: str, cuerpo: Any) -> None:
-        params = {"auth": self._token} if self._token else {}
+        cabeceras, params = await self.auth.apply()
         try:
-            r = await self._http.put(self._url(ruta), params=params, json=cuerpo)
+            r = await self._http.put(
+                self._url(ruta), params=params, json=cuerpo, headers=cabeceras
+            )
         except httpx.TransportError as exc:
             raise MoonJulesError(f"no se pudo publicar en RTDB: {exc}") from exc
         if r.is_success:
@@ -268,9 +272,17 @@ class RtdbSink(Sink):
             return
         # El cuerpo del error de Firebase no lleva el token, pero la URL
         # sí: por eso solo se nombra la ruta.
+        pista = ""
+        if r.status_code in (401, 403):
+            pista = (
+                f" La instancia escribe como uid '{getattr(self.auth, 'uid', '?')}': "
+                "comprueba que las reglas se lo permitan (docs/RTDB.md)."
+                if self.auth.name == "service_account"
+                else " Revisa el token."
+            )
         raise MoonJulesError(
             f"RTDB rechazo la escritura en {self.root}/{ruta}: "
-            f"HTTP {r.status_code}. Revisa las reglas de seguridad y el token."
+            f"HTTP {r.status_code}.{pista}"
         )
 
     async def publish(self, snapshot: dict) -> None:
@@ -278,9 +290,11 @@ class RtdbSink(Sink):
         await self._put(f"instances/{instancia}/snapshot", snapshot)
 
     async def _get(self, ruta: str) -> Any:
-        params = {"auth": self._token} if self._token else {}
+        cabeceras, params = await self.auth.apply()
         try:
-            r = await self._http.get(self._url(ruta), params=params)
+            r = await self._http.get(
+                self._url(ruta), params=params, headers=cabeceras
+            )
         except httpx.TransportError as exc:
             raise MoonJulesError(f"no se pudo leer de RTDB: {exc}") from exc
         if not r.is_success:
@@ -323,4 +337,5 @@ class RtdbSink(Sink):
         await self._put(f"instances/{instancia}/decisions", decisiones)
 
     async def aclose(self) -> None:
+        await self.auth.aclose()
         await self._http.aclose()

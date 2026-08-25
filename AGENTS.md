@@ -156,6 +156,12 @@ es un latido, y su valor está justo en que aparezca cuando no pasa nada.
 
 ## Seguridad
 
+Las instancias escriben en RTDB con una cuenta de servicio y
+`auth_variable_override`, para que las reglas de seguridad **también se
+les apliquen**. No sustituyas eso por un database secret "porque es más
+simple": entra como administrador y convierte las reglas en decoración.
+Ver `docs/RTDB.md`.
+
 La API key **nunca** se escribe en el config, ni se acepta por argumento
 de CLI, ni aparece en un log, ni entra en un test. Se referencia (`env:`
 o `keychain:`), el valor vive en un `.env` que no se versiona, y se

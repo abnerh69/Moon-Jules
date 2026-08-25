@@ -18,7 +18,8 @@ que uno que dice "no entiendo esta versión".
 
 ## Dónde vive
 
-Con `publish.target = "rtdb"`, bajo la raíz configurada:
+Con `publish.target = "rtdb"`, bajo la raíz configurada. Credenciales y
+reglas en `docs/RTDB.md`:
 
 ```
 {root}/control                              ← quién debe vigilar

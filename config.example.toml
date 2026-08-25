@@ -34,10 +34,16 @@ instance_id = ""            # vacio: se usa el hostname de la maquina
 path        = "~/.local/state/moon-jules/snapshot.json"
 decisions   = true          # sube triajes, pausas y nudges (unos KB)
 
+# Montaje completo y reglas de seguridad: docs/RTDB.md
 # [publish.rtdb]
-# url  = "https://TU-PROYECTO-default-rtdb.firebaseio.com"
-# root = "moonjules"
-# auth = "env:MOONJULES_RTDB_TOKEN"   # ADR-004: referencia, nunca literal
+# url             = "https://TU-PROYECTO-default-rtdb.firebaseio.com"
+# root            = "moonjules"
+# service_account = "~/.config/moon-jules/firebase-sa.json"
+# uid             = "moonjules-writer"   # identidad bajo la que aplican las reglas
+#
+# Alternativa obsoleta: database secret. Es administrador y salta las
+# reglas de seguridad; solo para una prueba rapida.
+# auth = "env:MOONJULES_RTDB_TOKEN"
 
 [relay]
 # Relevo entre varias maquinas: solo una vigila a la vez y el telefono
