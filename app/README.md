@@ -68,5 +68,41 @@ prueba un contador que no existe. En el canal `master`, además, la
 plantilla usa sintaxis experimental (*dot-shorthands*) que no compila
 con una restricción de SDK estable.
 
-Falta la pantalla y el registro de FCM. Lo que hay hoy es la capa de
-datos, verificada.
+## Ejecutar
+
+Las credenciales **no van en el código**: se inyectan al compilar, mismo
+criterio que la ADR-004 del lado de Python.
+
+```bash
+flutter run \
+  --dart-define=MJ_EMAIL=tu@correo \
+  --dart-define=MJ_PASSWORD=tu-clave
+```
+
+**No sirve una cuenta anónima.** Las reglas exigen el UID del arquitecto
+y el anónimo cambia en cada instalación, así que Firebase rechazaría
+cada lectura. Usa la cuenta de correo creada en Firebase Authentication,
+y comprueba que su UID sea el que aparece en `../docs/RTDB.md`.
+
+Si te cansa teclearlo, `.vscode/launch.json` o un script local admiten
+los mismos `--dart-define`; ninguno de los dos va al repositorio.
+
+### En macOS
+
+El *App Sandbox* bloquea la red saliente por defecto. Si RTDB no conecta
+en escritorio, añade a `macos/Runner/DebugProfile.entitlements` y a
+`Release.entitlements`:
+
+```xml
+<key>com.apple.security.network.client</key>
+<true/>
+```
+
+`firebase_messaging` en macOS necesita además capacidades de push y un
+perfil de Apple. Esta versión no las usa: solo mira.
+
+## Lo que falta
+
+El registro de FCM y los botones de acción. Se dejaron fuera a
+propósito: una app que solo lee es imposible que rompa nada, y la
+capacidad de tocar Jules desde el bolsillo se gana, no se asume.

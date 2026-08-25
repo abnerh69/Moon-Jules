@@ -45,6 +45,7 @@ from .logs import configure as configure_logs
 from .logs import get as get_logger
 from .models import AutonomyMode, Session, SessionState
 from .notify import Notifier, NullBackend
+from .notify import detect as detectar_backend_local
 from .publish import (
     Control,
     FileSink,
@@ -1041,21 +1042,26 @@ async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
                 sink = crear_sink(cfg)
                 ciclo = 0
                 rol_previo = ""
+                vias: list = []
+                if cfg.notify.local:
+                    vias.append(detectar_backend_local())
                 push = crear_backend_push(cfg, sink)
+                if push is not None:
+                    vias.append(push)
                 notifier = Notifier(
                     store,
                     enabled=cfg.notify.enabled,
                     cooldown_s=cfg.notify.cooldown_s,
-                    # Si hay push configurado manda ese; el local solo se
-                    # usa cuando es la unica via pedida.
-                    backend=push or (None if cfg.notify.local else NullBackend()),
+                    backends=vias or [NullBackend()],
                 )
                 log.info(
                     "watch iniciado: intervalo=%ss N=%ss modo=%s notificaciones=%s",
                     cfg.poll_interval_s,
                     cfg.policy.stall_after_s,
                     cfg.default_mode.value,
-                    notifier.backend.name if cfg.notify.enabled else "off",
+                    "+".join(b.name for b in notifier.backends)
+                    if cfg.notify.enabled
+                    else "off",
                 )
                 try:
                     while True:

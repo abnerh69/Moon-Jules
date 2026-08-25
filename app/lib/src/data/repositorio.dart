@@ -12,6 +12,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
 import '../model/comando.dart';
+import '../model/lectura.dart';
 import '../model/snapshot.dart';
 
 /// Rutas del árbol. Deben coincidir con `publish.rtdb.root` del config
@@ -28,25 +29,6 @@ class Rutas {
   String designada() => '$raiz/control/desired';
   String comando() => '$raiz/command';
   String dispositivo(String token) => '$raiz/devices/$token';
-}
-
-/// Snapshot de una instancia, o el motivo de que no se pueda leer.
-///
-/// El error no se propaga como excepción porque **un fallo de lectura es
-/// información que la pantalla debe mostrar**, no una caída: si una de
-/// las tres máquinas publica algo que esta versión no entiende, las
-/// otras dos deben seguir viéndose.
-class LecturaInstancia {
-  const LecturaInstancia.ok(this.id, Snapshot this.snapshot)
-      : error = null;
-  const LecturaInstancia.fallida(this.id, String this.error)
-      : snapshot = null;
-
-  final String id;
-  final Snapshot? snapshot;
-  final String? error;
-
-  bool get correcta => snapshot != null;
 }
 
 class RepositorioMoonJules {

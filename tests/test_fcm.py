@@ -268,3 +268,67 @@ def test_se_puede_avisar_al_movil_sin_molestar_al_portatil(tmp_path):
     finally:
         for k in ("MJ_F3", "MJ_T"):
             del os.environ[k]
+
+
+def test_las_dos_vias_avisan_a_la_vez(tmp_path):
+    """Encontrado en campo (entrega 22).
+
+    Activar el push apagaba el aviso local aunque `local = true`, y el
+    config no anunciaba eso. El resultado fue quedarse sin ninguna
+    alerta efectiva: el push no tenía destinatario y el local estaba
+    suprimido.
+    """
+    from moon_jules.notify import NullBackend
+
+    class Espia(NullBackend):
+        name = "espia"
+
+        def __init__(self):
+            self.enviados = 0
+
+        def send(self, title, body):
+            self.enviados += 1
+            return True
+
+    local, push = Espia(), Espia()
+    with Store(tmp_path / "s.db") as store:
+        n = Notifier(store, enabled=True, backends=[local, push])
+        n.notify_findings([hallazgo()], NOW)
+    assert local.enviados == 1
+    assert push.enviados == 1
+
+
+def test_basta_una_via_para_darlo_por_avisado(tmp_path):
+    """Si el push llegó, repetirlo cada ciclo porque el portátil estaba
+    dormido sería ruido."""
+    from moon_jules.notify import NullBackend
+
+    class Falla(NullBackend):
+        name = "falla"
+
+        def send(self, title, body):
+            return False
+
+    class Entrega(NullBackend):
+        name = "entrega"
+
+        def send(self, title, body):
+            return True
+
+    with Store(tmp_path / "s.db") as store:
+        n = Notifier(store, enabled=True, backends=[Falla(), Entrega()])
+        assert n.notify_findings([hallazgo()], NOW) == 1
+        # Ya avisado: el siguiente ciclo no repite.
+        assert n.notify_findings([hallazgo()], NOW) == 0
+
+
+def test_si_ninguna_via_entrega_se_deja_constancia(tmp_path, caplog):
+    """El caso real: fcm activo, cero dispositivos registrados, y nada
+    en el log que lo dijera."""
+    from moon_jules.notify import NullBackend
+
+    with Store(tmp_path / "s.db") as store:
+        n = Notifier(store, enabled=True, backends=[NullBackend()])
+        with caplog.at_level("WARNING"):
+            assert n.notify_findings([hallazgo()], NOW) == 0
+    assert any("ninguna via entrego" in r.message for r in caplog.records)

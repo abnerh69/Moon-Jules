@@ -107,20 +107,31 @@ class Notifier:
         enabled: bool = True,
         cooldown_s: int = 3600,
         backend: Backend | None = None,
+        backends: list[Backend] | None = None,
     ) -> None:
         self.enabled = enabled
         self.cooldown_s = cooldown_s
         self.store = store
-        self.backend = backend or detect()
-        if enabled and self.backend.name == "none":
+        # Varias vias a la vez, no una que sustituye a la otra. Que
+        # activar el push apagara el aviso local era un comportamiento
+        # que el config no anunciaba, y dejo al arquitecto sin ninguna
+        # alerta efectiva mientras el push no tenia destinatario.
+        self.backends = [b for b in (backends or ([backend] if backend else [detect()]))
+                         if b is not None]
+        if enabled and not any(b.name != "none" for b in self.backends):
             log.info(
-                "notificaciones activadas pero no hay backend nativo "
+                "notificaciones activadas pero no hay ninguna via "
                 "disponible en esta plataforma; se omiten"
             )
 
+    @property
+    def backend(self) -> Backend:
+        """La primera via. Se conserva por comodidad de los tests."""
+        return self.backends[0] if self.backends else NullBackend()
+
     def notify_findings(self, findings: list, now) -> int:
         """Notifica lo que requiere atencion. Devuelve cuantas salieron."""
-        if not self.enabled or self.backend.name == "none":
+        if not self.enabled or not self.backends:
             return 0
         sent = 0
         for f in findings:
@@ -132,7 +143,18 @@ class Notifier:
                 continue
             title = f"Moon-Jules: {f.session.repo}"
             body = f"{f.session.title or f.session.id} — {f.reason}"
-            if self.backend.send(title, body):
+            # Basta con que una via entregue para darlo por avisado: si
+            # el push llego, repetirlo cada ciclo por que el portatil
+            # estaba dormido seria ruido.
+            entregado = [b.send(title, body) for b in self.backends]
+            if any(entregado):
                 self.store.record_notification(f.session.name, f.verdict.value, now)
                 sent += 1
+            elif self.backends:
+                log.warning(
+                    "ninguna via entrego el aviso de %s (%s): "
+                    "revisa que haya dispositivos registrados",
+                    f.session.repo,
+                    f.verdict.value,
+                )
         return sent

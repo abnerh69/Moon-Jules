@@ -187,6 +187,19 @@ corrigen y se revalidan en un andamio llamado igual que el paquete
 entregado. Incluye la retirada de la plantilla de `flutter create`, que
 en el canal `master` genera sintaxis experimental.
 
+### E33 — Pantalla en modo lectura *(entrega 23)*
+Una pantalla y dos ventanas de detalle. La lógica de presentación
+—qué se ve primero, qué significa cada estado, de qué instancia leer
+cuando la habilitada calló— vive en `model/panel.dart` como Dart puro:
+**54 tests verificados**. Los widgets solo dibujan. Sin botones de
+acción: se ganan, no se asumen.
+
+### E34 — Las dos vías de aviso funcionan a la vez *(entrega 23)*
+Encontrado en campo: activar el push apagaba el aviso local aunque
+`local = true`, y el config no lo anunciaba. El resultado fue quedarse
+sin ninguna alerta efectiva, porque el push no tenía destinatario. Ahora
+avisan las dos y se deja constancia en el log cuando ninguna entrega.
+
 ## Siguiente ola
 
 ## Retirado

@@ -212,7 +212,7 @@ cierra issues, ni mergea PRs, ni cambia labels, ni archiva sesiones. La lista co
 y `watch`, con detector calibrado, notificaciones nativas, logging con
 redacción de credenciales, carga desde `.env`, lock de instancia única,
 triaje de hallazgos, historial local, interruptor de autonomía y
-recalibración del umbral. 297
+recalibración del umbral. 300
 tests, incluido un barrido de secretos sobre todo el árbol.
 
 `moon-jules doctor` mide la latencia real de tu API y proyecta el coste
@@ -233,9 +233,9 @@ Pendiente: vigilancia del contrato del API y verificación de
 
 ## La app
 
-`app/` contiene el panel de Android que consume lo publicado. Su capa de
-datos es Dart puro y se prueba sin emulador: `cd app && flutter test`.
-Ver `app/README.md`.
+`app/` contiene el panel que consume lo publicado. Su capa de datos y su
+lógica de presentación son Dart puro y se prueban sin emulador: `cd app
+&& flutter test` (54 tests). Ver `app/README.md`.
 
 ## Documentación
 
