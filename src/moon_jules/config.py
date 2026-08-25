@@ -143,6 +143,9 @@ class RelayConfig:
 class NotifyConfig:
     enabled: bool = False
     cooldown_s: int = 3600
+    #: Envia ademas notificacion push a los dispositivos registrados.
+    #: Requiere publish.target = "rtdb" con cuenta de servicio.
+    fcm: bool = False
 
 
 @dataclass(frozen=True)
@@ -274,6 +277,7 @@ def load(path: Path | None = None, *, dotenv: Path | None = None) -> Config:
     notify = NotifyConfig(
         enabled=bool(n.get("enabled", False)),
         cooldown_s=int(n.get("cooldown_s", 3600)),
+        fcm=bool(n.get("fcm", False)),
     )
 
     pub_raw = raw.get("publish") or {}

@@ -152,6 +152,19 @@ fuera: el punto ciego de la comprobación de versión, porque un shim de
 pyenv responde con la versión del entorno activo aunque apunte a otro
 paquete.
 
+### E28 — Notificaciones push *(entrega 20)*
+FCM con la misma cuenta de servicio que publica el snapshot. Sin esto,
+"recibo una alerta" es "veo la alerta cuando abro la app". Reutiliza la
+supresión de repetidos del `Notifier` y retira los tokens que FCM da por
+muertos. La alerta de instancia caída **no** puede salir de aquí: la
+detecta el teléfono contra `heartbeat_ms`.
+
+### E29 — Las claves nulas no viajan *(entrega 20)*
+Descubierto en datos reales: RTDB omite los nulos, así que el mismo
+snapshot tenía dos formas según el destino. Ahora se podan antes de
+publicar y el contrato es uno solo: **clave ausente significa
+desconocida, nunca cero**.
+
 ## Siguiente ola
 
 ## Retirado

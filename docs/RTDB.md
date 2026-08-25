@@ -111,6 +111,13 @@ moon-jules relay         # debe leer el control
         }
       },
 
+      "devices": {
+        "$token": {
+          ".write": "auth.uid === 'UID_ARQUITECTO'",
+          ".validate": "newData.isBoolean() || newData.val() === null"
+        }
+      },
+
       "command": {
         ".write": "auth.uid === 'UID_ARQUITECTO'",
         ".validate": "newData.val() === null || newData.hasChildren(['id', 'verb', 'issued_at', 'expires_at'])"
@@ -156,6 +163,15 @@ contraintuitivas. Se evalúan de la raíz hacia abajo y **el primer
 candado. Y una regla que concede acceso a un nodo lo concede **a todo su
 subárbol**: por eso `instances/$instancia` da permiso sobre el snapshot
 entero sin enumerar campos.
+
+## Notificaciones push
+
+La misma cuenta de servicio envía por FCM: mismo proyecto, ámbito
+`firebase.messaging`, sin Cloud Functions ni plan de pago. Se activa con
+`fcm = true` en `[notify]`.
+
+La app escribe su token en `{root}/devices/{token}` con valor `true`.
+Moon-Jules lo lee y retira solo los que FCM declara muertos.
 
 ## Coste
 

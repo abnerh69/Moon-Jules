@@ -110,10 +110,11 @@ def test_el_esquema_va_versionado():
 
 def test_una_sesion_trae_lo_que_la_app_necesita():
     s = snap(hallazgo())["sessions"][0]
+    # `last_nudge_at` y `last_nudge_outcome` no aparecen: sin nudges no
+    # tienen valor, y una clave ausente significa "no aplica".
     esperados = {
         "id", "repo", "title", "state", "verdict", "reason", "acked",
-        "needs_attention", "silence_s", "age_s", "started_at", "url",
-        "nudges", "last_nudge_at", "last_nudge_outcome",
+        "needs_attention", "silence_s", "age_s", "started_at", "url", "nudges",
     }
     assert set(s) == esperados
     assert s["repo"] == "Informatica-ASHware/CryptBot-V3"
@@ -121,11 +122,32 @@ def test_una_sesion_trae_lo_que_la_app_necesita():
     assert s["age_s"] == 3 * 3600
 
 
-def test_silencio_nulo_no_es_silencio_cero():
-    """`null` significa reloj congelado porque la sesión cerró. Si la app
-    lo lee como 0 mostrará 'muda hace 0 s' sobre trabajo ya entregado."""
-    f = Finding(sess(SessionState.COMPLETED), Verdict.DONE, Action.NONE, None, "completada")
-    assert snap(f)["sessions"] == [] or snap(f)["sessions"][0]["silence_s"] is None
+def test_el_silencio_ausente_no_es_silencio_cero():
+    """Encontrado en datos reales (entrega 19).
+
+    Firebase omite los nulos, así que `silence_s` llega **ausente**
+    cuando el reloj está congelado. Si la app hace `silence_s ?? 0`
+    mostrará "muda hace 0 s" sobre trabajo ya entregado. Una clave que
+    no está significa desconocida, nunca cero.
+    """
+    f = Finding(sess(SessionState.PAUSED), Verdict.PAUSED_DONE, Action.NONE, None,
+                "pausada tras entregar el trabajo")
+    s = snap(f)["sessions"][0]
+    assert "silence_s" not in s
+    assert s["age_s"] > 0, "la edad sí se conoce; son preguntas distintas"
+
+
+def test_ninguna_clave_nula_sobrevive():
+    """El contrato es uno solo para fichero y para RTDB."""
+
+    def hay_nulos(v) -> bool:
+        if isinstance(v, dict):
+            return any(x is None or hay_nulos(x) for x in v.values())
+        if isinstance(v, list):
+            return any(hay_nulos(x) for x in v)
+        return False
+
+    assert not hay_nulos(snap(hallazgo(), nudges=None))
 
 
 def test_el_snapshot_es_json_serializable():
@@ -167,7 +189,8 @@ def test_lo_silenciado_viaja_marcado_pero_no_cuenta_como_atencion():
 
 
 def test_la_pausa_se_ve_desde_el_movil():
-    assert snap()["swarm"]["paused"] is None
+    """Sin pausa la clave no viaja; su ausencia es la respuesta."""
+    assert "paused" not in snap()["swarm"]
     assert snap(paused={"*": "revisando"})["swarm"]["paused"] == {"*": "revisando"}
 
 

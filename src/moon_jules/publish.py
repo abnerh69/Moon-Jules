@@ -100,6 +100,22 @@ def _iso(dt: datetime | None) -> str | None:
     return dt.isoformat().replace("+00:00", "Z") if dt else None
 
 
+def sin_nulos(valor: Any) -> Any:
+    """Poda las claves con valor nulo, en profundidad.
+
+    Firebase RTDB **no almacena nulos**: los omite al escribir. Sin esta
+    normalizacion, el mismo snapshot tendria dos formas segun el destino
+    —con las claves en un fichero, sin ellas en RTDB— y la app tendria
+    que tolerar ambas. Se poda aqui para que el contrato sea uno solo:
+    **una clave ausente significa desconocida o no aplicable.**
+    """
+    if isinstance(valor, dict):
+        return {k: sin_nulos(v) for k, v in valor.items() if v is not None}
+    if isinstance(valor, list):
+        return [sin_nulos(v) for v in valor]
+    return valor
+
+
 def construir(
     report: Report,
     *,
@@ -151,7 +167,7 @@ def construir(
             }
         )
 
-    return {
+    return sin_nulos({
         "schema": SCHEMA,
         "instance": {
             "id": instancia,
@@ -190,7 +206,7 @@ def construir(
             "paused": report.paused or None,
         },
         "sessions": sesiones,
-    }
+    })
 
 
 # ---------- destinos ----------
@@ -358,6 +374,20 @@ class RtdbSink(Sink):
     async def set_desired(self, instancia: str | None) -> None:
         """Designa quien debe vigilar. Lo normal es que lo haga la app."""
         await self._put("control/desired", instancia)
+
+    async def read_devices(self) -> list[str]:
+        """Tokens FCM que la app ha registrado. Nunca levanta."""
+        try:
+            crudo = await self._get("devices")
+        except MoonJulesError as exc:
+            log.warning("no se pudieron leer los dispositivos: %s", exc)
+            return []
+        if isinstance(crudo, dict):
+            return [k for k, v in crudo.items() if v]
+        return []
+
+    async def forget_device(self, token: str) -> None:
+        await self._put(f"devices/{token}", None)
 
     async def read_command(self) -> Any:
         """Lee el comando pendiente. Nunca levanta: sin comando, None."""

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import logging
 import pathlib
 import re
@@ -37,6 +38,7 @@ from .detector import (
     humano,
 )
 from .errors import ConfigError, MoonJulesError, NotFoundError
+from .fcm import FcmBackend
 from .gauth import ServiceAccountAuth, StaticTokenAuth
 from .lock import AlreadyRunningError, InstanceLock
 from .logs import configure as configure_logs
@@ -591,6 +593,40 @@ async def cmd_unack(cfg: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def crear_backend_push(cfg: Config, sink: Sink | None) -> FcmBackend | None:
+    """Backend de notificaciones push, si esta configurado.
+
+    FCM es lo unico que despierta un telefono dormido; el backend nativo
+    solo alcanza a la maquina que vigila, que rara vez es donde esta el
+    arquitecto.
+    """
+    if not (cfg.notify.fcm and isinstance(sink, RtdbSink)):
+        return None
+    auth = sink.auth
+    if not isinstance(auth, ServiceAccountAuth) or not auth.project_id:
+        log.warning(
+            "notify.fcm activo pero la credencial no es una cuenta de "
+            "servicio: no se pueden enviar notificaciones push"
+        )
+        return None
+    return FcmBackend(auth, auth.project_id)
+
+
+async def refrescar_dispositivos(sink: Sink | None, notifier: Notifier) -> None:
+    """Pone al dia los tokens y retira los que FCM dio por muertos.
+
+    Se releen en cada ciclo en vez de cachearse: son uno o dos, y un
+    telefono recien instalado debe funcionar sin reiniciar el servicio.
+    """
+    backend = notifier.backend
+    if not isinstance(backend, FcmBackend) or not isinstance(sink, RtdbSink):
+        return
+    for token in backend.retirados:
+        with contextlib.suppress(MoonJulesError):
+            await sink.forget_device(token)
+    backend.set_tokens(await sink.read_devices())
+
+
 def crear_sink(cfg: Config) -> Sink | None:
     if not cfg.publish.enabled:
         return None
@@ -1009,6 +1045,7 @@ async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
                     store,
                     enabled=cfg.notify.enabled,
                     cooldown_s=cfg.notify.cooldown_s,
+                    backend=crear_backend_push(cfg, sink),
                 )
                 log.info(
                     "watch iniciado: intervalo=%ss N=%ss modo=%s notificaciones=%s",
@@ -1038,6 +1075,7 @@ async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
                                 standby=rol == "standby",
                             )
                             ciclo += 1
+                            await refrescar_dispositivos(sink, notifier)
                             _emit(report, notifier, quiet=args.quiet)
                             if sink is not None:
                                 # En cada ciclo, cambie o no el estado: el

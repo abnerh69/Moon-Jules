@@ -31,6 +31,25 @@ reglas en `docs/RTDB.md`:
 Con `target = "file"`, un JSON en `publish.path`, escrito de forma
 atómica: un lector nunca ve medio snapshot.
 
+## Una clave ausente no es un cero
+
+**Firebase RTDB no almacena valores nulos: los omite.** Verificado sobre
+datos reales. Una sesión fallida llega sin `silence_s`, sin
+`last_nudge_at` y sin `last_nudge_outcome`; un `control` sin designar
+llega solo con `known`.
+
+Moon-Jules poda los nulos antes de publicar, de modo que **fichero y
+RTDB producen exactamente la misma forma**. La regla para la app es una
+sola:
+
+> Una clave ausente significa **desconocida o no aplicable**. Nunca
+> cero, nunca cadena vacía, nunca falso.
+
+Donde más duele es en `silence_s`. Si la app hace `silence_s ?? 0`
+mostrará "muda hace 0 s" sobre una sesión que entregó su trabajo y está
+en reposo. Ausente ahí significa que el reloj está congelado, que es
+justo lo contrario de una alarma.
+
 ## El latido es el campo más importante
 
 `instance.published_at` se reescribe **en cada ciclo**, cambie o no el
@@ -174,7 +193,7 @@ y lo problemático; las completadas sin novedad no viajan.
 | `reason` | El dictamen en una frase, ya redactada para leerse. |
 | `acked` | Silenciada por el arquitecto. |
 | `needs_attention` | `is_problem and not acked`. Lo que hay que mirar. |
-| `silence_s` | Segundos sin señal del agente. **`null` no significa cero**: significa que el reloj está congelado porque la sesión cerró, y ese tiempo es reposo, no silencio. |
+| `silence_s` | Segundos sin señal del agente. **Ausente no significa cero**: significa que el reloj está congelado porque la sesión cerró, y ese tiempo es reposo, no silencio. |
 | `age_s` | Segundos desde que se abrió la sesión. Es "cuánto lleva trabajando", pregunta distinta de `silence_s`. |
 | `nudges` | Cuántas veces se le envió el prompt de continuación. |
 | `last_nudge_outcome` | `answered`, `unanswered` o `pending`. **Si aparecen varios `unanswered`, el prompt dejó de funcionar** — eso importa más que cualquier sesión concreta. |
@@ -194,6 +213,24 @@ y lo problemático; las completadas sin novedad no viajan.
 | `failed` | Falló. `reason` trae lo que declaró Jules. |
 | `nudge_unanswered` | Se le envió el prompt y no respondió. **El canario.** |
 | `nudge_budget_spent` | Se agotaron los intentos y se dejó de insistir. |
+
+## Notificaciones push
+
+RTDB en tiempo real solo despierta a la app en primer plano. Para que
+una alerta llegue con el teléfono en el bolsillo, Moon-Jules envía por
+FCM con la misma cuenta de servicio que publica el snapshot.
+
+La app registra su token en `{root}/devices/{token}` con valor `true`.
+Moon-Jules los relee en cada ciclo —un teléfono recién instalado debe
+funcionar sin reiniciar el servicio— y retira los que FCM da por
+muertos, para no insistir eternamente contra un móvil reinstalado.
+
+Se suprimen los repetidos por (sesión, veredicto): una sesión colgada
+avisaría doce veces por hora y acabarías silenciando la app.
+
+**Una alerta no puede salir de aquí: la de instancia caída.** La máquina
+que se cayó es precisamente la que tendría que avisar. Esa la detecta la
+app vigilando `heartbeat_ms` contra `stale_after_s`.
 
 ## Comandos
 

@@ -39,6 +39,9 @@ log = get_logger("gauth")
 SCOPES = (
     "https://www.googleapis.com/auth/firebase.database",
     "https://www.googleapis.com/auth/userinfo.email",
+    # La misma credencial envia las notificaciones push (epica E28):
+    # mismo proyecto, otro ambito, sin Cloud Functions de por medio.
+    "https://www.googleapis.com/auth/firebase.messaging",
 )
 
 #: Identidad por defecto bajo la que escriben las instancias. Debe
@@ -118,6 +121,17 @@ class ServiceAccountAuth(RtdbAuth):
             {"Authorization": f"Bearer {token}"},
             {"auth_variable_override": override},
         )
+
+    @property
+    def project_id(self) -> str | None:
+        """Proyecto de la clave. FCM lo necesita en la URL."""
+        return getattr(self._creds, "project_id", None)
+
+    def bearer_sync(self) -> str:
+        """Token para llamadas sincronas (FCM). Renueva si hace falta."""
+        if not self._creds.valid:
+            self._creds.refresh(self._request)
+        return str(self._creds.token)
 
     async def _bearer(self) -> str:
         if not self._creds.valid:
