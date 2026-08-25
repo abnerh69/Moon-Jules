@@ -277,17 +277,9 @@ class RtdbSink(Sink):
             return
         # El cuerpo del error de Firebase no lleva el token, pero la URL
         # sí: por eso solo se nombra la ruta.
-        pista = ""
-        if r.status_code in (401, 403):
-            pista = (
-                f" La instancia escribe como uid '{getattr(self.auth, 'uid', '?')}': "
-                "comprueba que las reglas se lo permitan (docs/RTDB.md)."
-                if self.auth.name == "service_account"
-                else " Revisa el token."
-            )
         raise MoonJulesError(
             f"RTDB rechazo la escritura en {self.root}/{ruta}: "
-            f"HTTP {r.status_code}.{pista}"
+            + self._explicar(r)
         )
 
     async def publish(self, snapshot: dict) -> None:
@@ -304,9 +296,38 @@ class RtdbSink(Sink):
             raise MoonJulesError(f"no se pudo leer de RTDB: {exc}") from exc
         if not r.is_success:
             raise MoonJulesError(
-                f"RTDB rechazo la lectura de {self.root}/{ruta}: HTTP {r.status_code}"
+                f"RTDB rechazo la lectura de {self.root}/{ruta}: " + self._explicar(r)
             )
         return r.json()
+
+    def _explicar(self, r: httpx.Response) -> str:
+        """Traduce la respuesta de Firebase.
+
+        RTDB devuelve **401 tambien cuando son las reglas las que
+        deniegan**, no solo cuando la credencial es mala. Confundir
+        ambos casos manda a revisar el sitio equivocado, y el cuerpo de
+        la respuesta es justo donde Firebase lo aclara.
+        """
+        try:
+            cuerpo = str((r.json() or {}).get("error", ""))
+        except ValueError:
+            cuerpo = ""
+        uid = getattr(self.auth, "uid", None)
+        if "Permission denied" in cuerpo:
+            if uid:
+                return (
+                    f"HTTP {r.status_code}: las reglas denegaron a uid '{uid}'.\n"
+                    "No es la credencial: con `auth_variable_override` la cuenta "
+                    "de servicio deja de ser administradora y las reglas se le "
+                    "aplican. Publica las de docs/RTDB.md."
+                )
+            return f"HTTP {r.status_code}: las reglas denegaron el acceso."
+        if r.status_code in (401, 403):
+            return (
+                f"HTTP {r.status_code}: {cuerpo or 'sin detalle'}. Revisa la "
+                "credencial y que el project_id de la clave coincida con la URL."
+            )
+        return f"HTTP {r.status_code}: {cuerpo or 'sin detalle'}"
 
     async def read_control(self) -> Control:
         """Lee quien deberia vigilar. Nunca levanta: la duda es un dato."""

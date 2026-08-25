@@ -138,6 +138,7 @@ comprueba antes de instalar y se rechaza si no coincide.
 
 ```bash
 moon-jules service install               # launchd (macOS) o systemd --user
+                                         # nunca con sudo: es de usuario
 moon-jules service install --caffeinate  # además, evita el sueño por inactividad
 moon-jules service status                # ¿cargado? ¿y publicando?
 moon-jules service show                  # ver la definición sin instalar
@@ -211,7 +212,7 @@ cierra issues, ni mergea PRs, ni cambia labels, ni archiva sesiones. La lista co
 y `watch`, con detector calibrado, notificaciones nativas, logging con
 redacción de credenciales, carga desde `.env`, lock de instancia única,
 triaje de hallazgos, historial local, interruptor de autonomía y
-recalibración del umbral. 265
+recalibración del umbral. 280
 tests, incluido un barrido de secretos sobre todo el árbol.
 
 `moon-jules doctor` mide la latencia real de tu API y proyecta el coste

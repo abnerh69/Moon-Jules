@@ -413,6 +413,26 @@ async def cmd_doctor(cfg: Config, args: argparse.Namespace) -> int:
     print(f"modo        {cfg.default_mode.value}")
     print(f"topes       {cfg.budgets.max_active_sessions} sesiones concurrentes")
     print(f"estado      {cfg.state_path}")
+    # La pregunta "¿por que no llega nada a la app?" tiene que
+    # responderse aqui, no deduciendola de un grep al config.
+    if not cfg.publish.enabled:
+        print("publicando  NO (publish.enabled = false)")
+    else:
+        detalle = (
+            f"{cfg.publish.rtdb.url}/{cfg.publish.rtdb.root}"
+            if cfg.publish.target == "rtdb"
+            else str(cfg.publish.path)
+        )
+        credencial = (
+            "cuenta de servicio"
+            if cfg.publish.rtdb.service_account
+            else "database secret (obsoleto)"
+        )
+        print(f"publicando  {cfg.publish.target} -> {detalle}")
+        if cfg.publish.target == "rtdb":
+            print(f"            como '{cfg.publish.rtdb.uid}' con {credencial}")
+        print(f"instancia   {instance_id(cfg.publish.instance_id)}"
+              f"{'  | relevo activo' if cfg.relay.enabled else ''}")
     with Store(cfg.state_path) as store:
         pausas = store.active_pauses(now())
     if pausas:

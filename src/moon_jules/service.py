@@ -21,9 +21,11 @@ from __future__ import annotations
 import os
 import platform
 import plistlib
+import re
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -118,6 +120,21 @@ def detectar(
     siempre sin que nada lo delate.
     """
     binario = localizar_ejecutable()
+    entorno_activo = os.environ.get("VIRTUAL_ENV")
+    if (
+        entorno_activo
+        and not forzar
+        and not str(binario).startswith(str(Path(entorno_activo).resolve()))
+    ):
+        # El caso que la comprobacion de version no detecta: un shim de
+        # pyenv responde con la version del entorno activo aunque el
+        # paquete al que apunta sea otro.
+        raise MoonJulesError(
+            f"hay un entorno virtual activo ({entorno_activo}) pero el "
+            f"ejecutable elegido esta fuera de el:\n  {binario}\n"
+            "El servicio quedaria apuntando a otra instalacion. Prueba "
+            "`hash -r` y repite, o usa --force si es lo que quieres."
+        )
     reportada = verificar_version(binario)
     if reportada and reportada != __version__ and not forzar:
         raise MoonJulesError(
@@ -195,21 +212,53 @@ def _correr(argv: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(argv, capture_output=True, text=True)
 
 
+def _rechazar_root() -> None:
+    """Este servicio es de usuario y con root no funciona.
+
+    Bajo `sudo`, `os.getuid()` es 0 y el dominio `gui/0` no existe
+    —launchctl responde "Domain does not support specified action"—, y
+    ademas `Path.home()` pasa a ser `/var/root`, asi que el plist acaba
+    en el sitio equivocado. Mejor negarse que dejar ese desorden.
+    """
+    if os.geteuid() != 0:
+        return
+    raise MoonJulesError(
+        "no ejecutes esto con sudo. El servicio es de usuario: necesita tu "
+        "sesion grafica, tu HOME y tu llavero.\n"
+        "Si ya lo intentaste, limpia con:\n"
+        "  sudo rm -f /var/root/Library/LaunchAgents/com.ashware.moonjules.plist"
+    )
+
+
+def _descargar(uid: int, espera: float = 3.0) -> None:
+    """Descarga el servicio y espera a que desaparezca de verdad.
+
+    `bootout` puede volver antes de que el proceso haya muerto, y
+    entonces `bootstrap` falla con "Input/output error" porque la
+    etiqueta sigue registrada. Ese error no dice nada de esto.
+    """
+    _correr(["launchctl", "bootout", f"gui/{uid}/{LABEL}"])
+    limite = time.monotonic() + espera
+    while time.monotonic() < limite:
+        if _correr(["launchctl", "print", f"gui/{uid}/{LABEL}"]).returncode != 0:
+            return
+        time.sleep(0.25)
+
+
 def instalar(env: Entorno) -> Path:
+    _rechazar_root()
     env.log_dir.mkdir(parents=True, exist_ok=True)
     if platform.system() == "Darwin":
         destino = ruta_plist()
         destino.parent.mkdir(parents=True, exist_ok=True)
-        destino.write_bytes(plist(env))
         uid = os.getuid()
-        # `bootout` antes de `bootstrap`: recargar sin descargar deja la
-        # definicion vieja corriendo y confunde el diagnostico.
-        _correr(["launchctl", "bootout", f"gui/{uid}/{LABEL}"])
+        # Descargar ANTES de tocar el fichero: cambiar el plist bajo un
+        # servicio cargado es lo que provoca el "Input/output error".
+        _descargar(uid)
+        destino.write_bytes(plist(env))
         r = _correr(["launchctl", "bootstrap", f"gui/{uid}", str(destino)])
         if r.returncode != 0:
-            raise MoonJulesError(
-                f"launchctl rechazo el servicio: {r.stderr.strip() or r.returncode}"
-            )
+            raise MoonJulesError(_explicar_launchctl(r, destino, uid))
         return destino
     if platform.system() == "Linux":
         destino = ruta_unit()
@@ -228,11 +277,35 @@ def instalar(env: Entorno) -> Path:
     )
 
 
+def _explicar_launchctl(r: subprocess.CompletedProcess[str], plist_path: Path, uid: int) -> str:
+    """launchctl explica poco. Se traduce lo que de verdad ocurre."""
+    crudo = (r.stderr or r.stdout or "").strip()
+    # El codigo se extrae con expresion regular y se compara como
+    # numero: buscarlo como subcadena hace que "5:" case dentro de
+    # "125:" y se de el consejo equivocado justo al error mas confuso.
+    pistas = {
+        5: (
+            "el servicio seguia cargado. Descargalo a mano y repite:\n"
+            f"  launchctl bootout gui/{uid}/{LABEL}"
+        ),
+        125: "estas en un dominio sin sesion grafica. No uses sudo.",
+        112: "el plist esta mal formado o apunta a un ejecutable inexistente.",
+    }
+    m = re.search(r"failed:\s*(\d+)\s*:", crudo)
+    if m and int(m.group(1)) in pistas:
+        return f"launchctl rechazo el servicio ({crudo}).\n{pistas[int(m.group(1))]}"
+    return (
+        f"launchctl rechazo el servicio ({crudo or r.returncode}).\n"
+        f"Revisa {plist_path} y el log en {ruta_plist().parent}."
+    )
+
+
 def desinstalar() -> bool:
     """Devuelve si habia algo que desinstalar."""
+    _rechazar_root()
     if platform.system() == "Darwin":
         destino = ruta_plist()
-        _correr(["launchctl", "bootout", f"gui/{os.getuid()}/{LABEL}"])
+        _descargar(os.getuid())
         if destino.exists():
             destino.unlink()
             return True
@@ -255,13 +328,16 @@ def estado() -> dict[str, object]:
         r = _correr(["launchctl", "print", f"gui/{os.getuid()}/{LABEL}"])
         if r.returncode != 0:
             return {"sistema": "launchd", "cargado": False, "instalado": ruta_plist().exists()}
-        pid = _campo(r.stdout, "pid = ")
+        salida = _campo(r.stdout, "last exit code = ")
         return {
             "sistema": "launchd",
             "cargado": True,
             "instalado": ruta_plist().exists(),
-            "pid": pid,
-            "ultima_salida": _campo(r.stdout, "last exit code = "),
+            "pid": _campo(r.stdout, "pid = "),
+            # launchctl dice "(never exited)" en ingles y sin espacio.
+            "ultima salida": (
+                "nunca ha caido" if salida in (None, "(never exited)") else salida
+            ),
         }
     if sistema == "Linux":
         r = _correr(["systemctl", "--user", "is-active", "moon-jules.service"])

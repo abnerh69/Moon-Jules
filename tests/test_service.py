@@ -271,3 +271,63 @@ def test_si_el_binario_no_responde_no_se_bloquea(tmp_path, monkeypatch):
     monkeypatch.setattr(svc, "localizar_ejecutable", lambda: tmp_path / "moon-jules")
     monkeypatch.setattr(svc, "verificar_version", lambda _b: None)
     assert svc.detectar(tmp_path).ejecutable == tmp_path / "moon-jules"
+
+
+def test_no_se_instala_como_root(monkeypatch, tmp_path):
+    """Bajo sudo el dominio `gui/0` no existe y HOME es /var/root: el
+    plist acaba en el sitio equivocado y launchctl responde 125."""
+    from moon_jules import service as svc
+    from moon_jules.errors import MoonJulesError
+
+    monkeypatch.setattr(svc.os, "geteuid", lambda: 0)
+    with pytest.raises(MoonJulesError, match="sudo"):
+        svc.instalar(entorno())
+
+
+def test_un_binario_fuera_del_entorno_activo_se_rechaza(tmp_path, monkeypatch):
+    """El punto ciego de la comprobación de versión: un shim de pyenv
+    responde con la versión del entorno activo aunque el paquete al que
+    apunta sea otro. Esto es estructural y no depende de preguntarle."""
+    from moon_jules import service as svc
+    from moon_jules.errors import MoonJulesError
+
+    venv = tmp_path / "venv"
+    venv.mkdir()
+    monkeypatch.setenv("VIRTUAL_ENV", str(venv))
+    monkeypatch.setattr(svc, "localizar_ejecutable", lambda: tmp_path / "otro" / "moon-jules")
+    with pytest.raises(MoonJulesError, match="entorno virtual activo"):
+        svc.detectar(tmp_path)
+
+
+def test_force_tambien_salta_el_aviso_de_entorno(tmp_path, monkeypatch):
+    from moon_jules import service as svc
+
+    venv = tmp_path / "venv"
+    venv.mkdir()
+    monkeypatch.setenv("VIRTUAL_ENV", str(venv))
+    monkeypatch.setattr(svc, "localizar_ejecutable", lambda: tmp_path / "otro" / "moon-jules")
+    monkeypatch.setattr(svc, "verificar_version", lambda _b: None)
+    assert svc.detectar(tmp_path, forzar=True)
+
+
+@pytest.mark.parametrize(
+    "crudo,esperado",
+    [
+        ("Bootstrap failed: 5: Input/output error", "seguia cargado"),
+        ("Bootstrap failed: 125: Domain does not support", "sudo"),
+        ("Bootstrap failed: 112: Could not find", "mal formado"),
+    ],
+)
+def test_los_errores_de_launchctl_se_traducen(crudo: str, esperado: str, tmp_path):
+    """launchctl explica poco y sus códigos no dicen nada por sí solos.
+
+    El 125 está aquí por un fallo real: buscando el código como
+    subcadena, `"5:"` casaba dentro de `"125:"` y se daba el consejo
+    equivocado justo en el error más confuso.
+    """
+    import subprocess
+
+    from moon_jules import service as svc
+
+    r = subprocess.CompletedProcess([], 1, stdout="", stderr=crudo)
+    assert esperado in svc._explicar_launchctl(r, tmp_path / "x.plist", 501)

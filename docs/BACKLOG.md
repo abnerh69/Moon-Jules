@@ -140,6 +140,18 @@ servicio quedaba ejecutando código distinto de forma permanente y
 silenciosa. Ahora se resuelve desde el intérprete que ejecuta el
 proceso, y se rechaza instalar un binario que reporte otra versión.
 
+### E27 — Diagnóstico de lo que costó una tarde *(entrega 19)*
+Cuatro cosas que el propio proyecto debería haber respondido y no
+respondía. `doctor` ahora dice si publica y con qué credencial —"¿por
+qué no llega nada a la app?" no debe deducirse de un `grep` al config—.
+El 401 de RTDB distingue reglas de credencial: Firebase devuelve 401 en
+ambos casos y confundirlos manda a revisar el sitio equivocado.
+`service install` se niega bajo `sudo` y descarga antes de reescribir el
+plist. Y se avisa si hay un entorno virtual activo pero el binario cae
+fuera: el punto ciego de la comprobación de versión, porque un shim de
+pyenv responde con la versión del entorno activo aunque apunte a otro
+paquete.
+
 ## Siguiente ola
 
 ## Retirado

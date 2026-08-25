@@ -217,3 +217,54 @@ def test_la_cuenta_de_servicio_se_prefiere_al_secret(tmp_path):
     )
     with pytest.raises(ConfigError, match="no parece una clave"):
         crear_sink(cfg)
+
+
+# --------------------------------------------------------------------
+# traducir lo que dice Firebase
+# --------------------------------------------------------------------
+
+
+def _sink_que_responde(status: int, cuerpo: dict, auth=None) -> RtdbSink:
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, json=cuerpo)
+
+    return RtdbSink("https://x.firebaseio.com", "moonjules",
+                    auth=auth or AuthFalsa(),
+                    client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+
+
+def test_un_401_por_reglas_no_se_confunde_con_credencial_mala():
+    """Encontrado en campo (entrega 18).
+
+    RTDB devuelve 401 también cuando son las reglas las que deniegan.
+    Tratarlo como problema de credencial manda a revisar el sitio
+    equivocado, y el cuerpo de la respuesta es donde Firebase lo aclara.
+    """
+    from moon_jules.errors import MoonJulesError
+
+    sink = _sink_que_responde(401, {"error": "Permission denied"})
+    with pytest.raises(MoonJulesError) as exc:
+        run(sink._put("instances/x/snapshot", {}))
+    run(sink.aclose())
+    mensaje = str(exc.value)
+    assert "las reglas denegaron" in mensaje
+    assert UID_ESCRITOR in mensaje
+    assert "administradora" in mensaje, "debe explicar por qué no basta la credencial"
+
+
+def test_un_401_sin_permission_denied_apunta_a_la_credencial():
+    from moon_jules.errors import MoonJulesError
+
+    sink = _sink_que_responde(401, {"error": "Could not parse auth token."})
+    with pytest.raises(MoonJulesError, match="credencial"):
+        run(sink._put("instances/x/snapshot", {}))
+    run(sink.aclose())
+
+
+def test_la_lectura_denegada_se_explica_igual():
+    from moon_jules.errors import MoonJulesError
+
+    sink = _sink_que_responde(401, {"error": "Permission denied"})
+    with pytest.raises(MoonJulesError, match="las reglas denegaron"):
+        run(sink._get("control"))
+    run(sink.aclose())
