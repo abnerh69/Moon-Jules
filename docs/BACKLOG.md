@@ -179,6 +179,14 @@ vigilante en otro país se quiere la segunda sin la primera. Además,
 `fcm = true` con `enabled = false` era una contradicción silenciosa y
 ahora es error de arranque.
 
+### E32 — Los tests de la app no compilaban *(entrega 22, correctivo)*
+Los imports apuntaban a `moonjules_core`, el nombre del paquete de
+andamio usado para verificarlos, no al real. Verificar en un paquete con
+otro nombre invalida justo lo que la verificación debía garantizar. Se
+corrigen y se revalidan en un andamio llamado igual que el paquete
+entregado. Incluye la retirada de la plantilla de `flutter create`, que
+en el canal `master` genera sintaxis experimental.
+
 ## Siguiente ola
 
 ## Retirado

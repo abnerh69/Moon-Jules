@@ -50,16 +50,23 @@ detecta esta app comparando `heartbeat_ms` con `stale_after_s`.
 
 ## Puesta en marcha
 
-Falta el andamiaje de Flutter (`flutter create`), la pantalla y el
-registro de FCM. Lo que hay hoy es la capa de datos, verificada.
-
 ```bash
 flutter create --org org.ashware --project-name moonjules \
   --platforms android .
 flutter pub get
 flutterfire configure     # genera firebase_options.dart y google-services.json
-flutter test
+flutter test              # 36 en verde
 ```
 
-Ambos ficheros generados están en `.gitignore`: llevan identificadores
-del proyecto de Firebase y no van al repositorio.
+`firebase_options.dart` y `google-services.json` están en `.gitignore`:
+llevan identificadores del proyecto de Firebase y no van al repositorio.
+
+**`flutter create` sobrescribe `lib/main.dart` y crea
+`test/widget_test.dart`.** Si vuelves a ejecutarlo, restaura el
+`main.dart` de este repositorio y borra el `widget_test.dart` generado:
+prueba un contador que no existe. En el canal `master`, además, la
+plantilla usa sintaxis experimental (*dot-shorthands*) que no compila
+con una restricción de SDK estable.
+
+Falta la pantalla y el registro de FCM. Lo que hay hoy es la capa de
+datos, verificada.

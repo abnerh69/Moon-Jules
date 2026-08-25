@@ -6,7 +6,7 @@
 /// ausente no es un cero— se descubrió mirando precisamente ese export.
 library;
 
-import 'package:moonjules_core/src/model/snapshot.dart';
+import 'package:moonjules/src/model/snapshot.dart';
 import 'package:test/test.dart';
 
 /// Fragmento fiel del export: una sesión fallida **no trae**

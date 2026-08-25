@@ -7,7 +7,7 @@ library;
 
 import 'dart:math';
 
-import 'package:moonjules_core/src/model/comando.dart';
+import 'package:moonjules/src/model/comando.dart';
 import 'package:test/test.dart';
 
 void main() {
