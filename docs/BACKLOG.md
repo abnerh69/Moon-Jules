@@ -133,6 +133,13 @@ ejecuta aunque haya pausa. Contrato en `docs/SNAPSHOT.md`.
 designar una instancia caída. Que la app no lo ofrezca está bien; que no
 pueda hacerlo aunque tenga un fallo, es mejor.
 
+### E26 — El servicio apuntaba al binario equivocado *(entrega 18)*
+Encontrado en campo. `detectar()` resolvía por `PATH`: instalado desde
+un shell sin el virtualenv activo, apuntaba a otra instalación y el
+servicio quedaba ejecutando código distinto de forma permanente y
+silenciosa. Ahora se resuelve desde el intérprete que ejecuta el
+proceso, y se rechaza instalar un binario que reporte otra versión.
+
 ## Siguiente ola
 
 ## Retirado

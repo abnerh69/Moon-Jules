@@ -148,7 +148,7 @@ sí lo es, y es público. Ante duda, consúltalo.
 ejecutar en CI**: `launchctl` no existe fuera de macOS. Lo que se prueba
 es lo generado, y por eso los tests de `tests/test_service.py` son
 específicos hasta la pedantería —rutas absolutas, PATH explícito,
-ThrottleInterval—. No los relajes: un plist mal formado falla en la
+ThrottleInterval, y de qué entorno sale el binario—. No los relajes: un plist mal formado falla en la
 máquina del arquitecto y en ningún otro sitio.
 
 ## El snapshot es un contrato

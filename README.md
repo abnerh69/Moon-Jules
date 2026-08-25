@@ -131,6 +131,11 @@ seguridad en `docs/RTDB.md`.
 `watch` en una pestaña de terminal muere al cerrarla, al cerrar sesión y
 al dormirse la máquina. Para que sobreviva:
 
+**Instálalo desde el mismo entorno virtual donde está Moon-Jules.** El
+servicio queda apuntando a un ejecutable concreto y para siempre; si lo
+instalas con el entorno desactivado, apuntaría a otra instalación. Se
+comprueba antes de instalar y se rechaza si no coincide.
+
 ```bash
 moon-jules service install               # launchd (macOS) o systemd --user
 moon-jules service install --caffeinate  # además, evita el sueño por inactividad

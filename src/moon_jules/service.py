@@ -27,6 +27,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import __version__
 from .errors import MoonJulesError
 
 LABEL = "com.ashware.moonjules"
@@ -64,18 +65,69 @@ class Entorno:
         return args
 
 
-def detectar(cfg_log_dir: Path, config: Path | None = None, *, caffeinate: bool = False):
-    """Deduce el entorno del servicio desde el proceso actual."""
-    binario = shutil.which("moon-jules")
-    if not binario:
-        # Instalado pero sin el script en PATH: se invoca el modulo.
+def localizar_ejecutable() -> Path:
+    """El `moon-jules` que corresponde a *este* proceso.
+
+    Resolver por PATH es incorrecto y falla en silencio: si el servicio
+    se instala desde un shell sin el entorno virtual activo, `which`
+    encuentra otra instalacion —la global de pyenv, por ejemplo— y el
+    servicio queda ejecutando codigo distinto del que el arquitecto cree
+    haber desplegado, de forma permanente.
+
+    El orden correcto parte del proceso: el script de consola vive en el
+    mismo `bin/` que el interprete que lo esta ejecutando.
+    """
+    candidatos: list[Path] = []
+    invocado = Path(sys.argv[0]) if sys.argv and sys.argv[0] else None
+    if invocado and invocado.name.startswith("moon-jules"):
+        candidatos.append(invocado if invocado.is_absolute() else invocado.resolve())
+    candidatos.append(Path(sys.executable).parent / "moon-jules")
+    del_path = shutil.which("moon-jules")
+    if del_path:
+        candidatos.append(Path(del_path))
+
+    for c in candidatos:
+        if c.is_file():
+            return c.resolve()
+    raise MoonJulesError(
+        "no encuentro el ejecutable `moon-jules`. Instala con "
+        '`pip install -e "."` dentro del entorno virtual y vuelve a '
+        "intentarlo desde ese mismo entorno."
+    )
+
+
+def verificar_version(binario: Path) -> str | None:
+    """Version que reporta el binario, o None si no se pudo preguntar."""
+    r = _correr([str(binario), "--version"])
+    if r.returncode != 0:
+        return None
+    return r.stdout.strip().replace("moon-jules", "").strip() or None
+
+
+def detectar(
+    cfg_log_dir: Path,
+    config: Path | None = None,
+    *,
+    caffeinate: bool = False,
+    forzar: bool = False,
+) -> Entorno:
+    """Deduce el entorno del servicio desde el proceso actual.
+
+    Comprueba ademas que el binario elegido sea el mismo codigo que esta
+    corriendo. Si no lo es, el servicio ejecutaria otra version para
+    siempre sin que nada lo delate.
+    """
+    binario = localizar_ejecutable()
+    reportada = verificar_version(binario)
+    if reportada and reportada != __version__ and not forzar:
         raise MoonJulesError(
-            "no encuentro el ejecutable `moon-jules` en el PATH. "
-            'Instala con `pip install -e "."` dentro del entorno virtual '
-            "y vuelve a intentarlo desde ese mismo entorno."
+            f"{binario} dice ser la version {reportada}, pero esta ejecutandose "
+            f"la {__version__}. El servicio quedaria corriendo otra instalacion.\n"
+            f"Activa el entorno virtual correcto y repite, o usa --force si "
+            f"sabes lo que haces."
         )
     return Entorno(
-        ejecutable=Path(binario).resolve(),
+        ejecutable=binario,
         home=Path.home(),
         log_dir=cfg_log_dir,
         config=config.resolve() if config else None,

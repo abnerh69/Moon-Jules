@@ -188,3 +188,86 @@ def test_watch_admite_quiet():
 
     assert build_parser().parse_args(["watch", "--quiet"]).quiet is True
     assert build_parser().parse_args(["watch"]).quiet is False
+
+
+# --------------------------------------------------------------------
+# el binario correcto, que es el que este proceso está ejecutando
+# --------------------------------------------------------------------
+
+
+def test_prefiere_el_binario_del_interprete_actual(tmp_path, monkeypatch):
+    """Encontrado en campo (entrega 17).
+
+    Instalado desde un shell sin el virtualenv activo, `which` resolvió
+    al `moon-jules` global de pyenv y el servicio quedó ejecutando otra
+    instalación de forma permanente y silenciosa. El script de consola
+    vive en el mismo `bin/` que el intérprete que lo ejecuta: ese es el
+    orden correcto, y el PATH es el último recurso.
+    """
+    from moon_jules import service as svc
+
+    venv_bin = tmp_path / "venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    (venv_bin / "moon-jules").write_text("#!/bin/sh\n")
+    otro = tmp_path / "global" / "bin"
+    otro.mkdir(parents=True)
+    (otro / "moon-jules").write_text("#!/bin/sh\n")
+
+    monkeypatch.setattr(svc.sys, "executable", str(venv_bin / "python"))
+    monkeypatch.setattr(svc.sys, "argv", ["moon-jules", "service", "install"])
+    monkeypatch.setattr(svc.shutil, "which", lambda _n: str(otro / "moon-jules"))
+
+    assert svc.localizar_ejecutable() == (venv_bin / "moon-jules").resolve()
+
+
+def test_el_path_es_el_ultimo_recurso(tmp_path, monkeypatch):
+    from moon_jules import service as svc
+
+    otro = tmp_path / "global" / "bin"
+    otro.mkdir(parents=True)
+    (otro / "moon-jules").write_text("#!/bin/sh\n")
+    monkeypatch.setattr(svc.sys, "executable", str(tmp_path / "no-existe" / "python"))
+    monkeypatch.setattr(svc.sys, "argv", ["/dev/null/moon-jules"])
+    monkeypatch.setattr(svc.shutil, "which", lambda _n: str(otro / "moon-jules"))
+
+    assert svc.localizar_ejecutable() == (otro / "moon-jules").resolve()
+
+
+def test_sin_ejecutable_alguno_lo_dice_claro(tmp_path, monkeypatch):
+    from moon_jules import service as svc
+    from moon_jules.errors import MoonJulesError
+
+    monkeypatch.setattr(svc.sys, "executable", str(tmp_path / "nada" / "python"))
+    monkeypatch.setattr(svc.sys, "argv", ["moon-jules"])
+    monkeypatch.setattr(svc.shutil, "which", lambda _n: None)
+    with pytest.raises(MoonJulesError, match="entorno virtual"):
+        svc.localizar_ejecutable()
+
+
+def test_instalar_un_binario_de_otra_version_se_rechaza(tmp_path, monkeypatch):
+    """Un servicio que corre otra versión no lo delata nada: arranca,
+    funciona a medias y el arquitecto cree haber desplegado otra cosa."""
+    from moon_jules import service as svc
+    from moon_jules.errors import MoonJulesError
+
+    monkeypatch.setattr(svc, "localizar_ejecutable", lambda: tmp_path / "moon-jules")
+    monkeypatch.setattr(svc, "verificar_version", lambda _b: "0.3.0")
+    with pytest.raises(MoonJulesError, match="0.3.0"):
+        svc.detectar(tmp_path)
+
+
+def test_force_permite_instalarlo_igualmente(tmp_path, monkeypatch):
+    from moon_jules import service as svc
+
+    monkeypatch.setattr(svc, "localizar_ejecutable", lambda: tmp_path / "moon-jules")
+    monkeypatch.setattr(svc, "verificar_version", lambda _b: "0.3.0")
+    assert svc.detectar(tmp_path, forzar=True).ejecutable == tmp_path / "moon-jules"
+
+
+def test_si_el_binario_no_responde_no_se_bloquea(tmp_path, monkeypatch):
+    """No poder preguntar la versión no es prueba de que esté mal."""
+    from moon_jules import service as svc
+
+    monkeypatch.setattr(svc, "localizar_ejecutable", lambda: tmp_path / "moon-jules")
+    monkeypatch.setattr(svc, "verificar_version", lambda _b: None)
+    assert svc.detectar(tmp_path).ejecutable == tmp_path / "moon-jules"

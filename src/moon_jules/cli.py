@@ -773,7 +773,12 @@ async def cmd_service(cfg: Config, args: argparse.Namespace) -> int:
         print("servicio retirado." if svc.desinstalar() else "no habia servicio instalado.")
         return 0
 
-    env = svc.detectar(cfg.log_dir, args.config, caffeinate=getattr(args, "caffeinate", False))
+    env = svc.detectar(
+        cfg.log_dir,
+        args.config,
+        caffeinate=getattr(args, "caffeinate", False),
+        forzar=getattr(args, "force", False),
+    )
     if args.accion == "show":
         import platform as _p
 
@@ -785,7 +790,10 @@ async def cmd_service(cfg: Config, args: argparse.Namespace) -> int:
 
     destino = svc.instalar(env)
     print(f"servicio instalado en {destino}")
-    print(f"ejecuta: {' '.join(env.argumentos)}")
+    print(f"ejecuta:    {' '.join(env.argumentos)}")
+    # El entorno del que sale el binario es justo lo que se equivoca al
+    # instalar desde un shell sin el virtualenv activo.
+    print(f"entorno:    {env.ejecutable.parent.parent}")
     aviso = svc.aviso_sueno()
     if aviso:
         print(f"\naviso       {aviso}")
@@ -1168,6 +1176,8 @@ def build_parser() -> argparse.ArgumentParser:
     sv_i = sv_sub.add_parser("install", help="instala y arranca el servicio")
     sv_i.add_argument("--caffeinate", action="store_true",
                       help="evita el sueno por inactividad (no el de la tapa)")
+    sv_i.add_argument("--force", action="store_true",
+                      help="instala aunque el binario sea de otra version")
     sv_sub.add_parser("uninstall", help="detiene y retira el servicio")
     sv_sub.add_parser("status", help="que dice el sistema, y si publica")
     sv_sub.add_parser("show", help="imprime la definicion sin instalar nada")
