@@ -126,6 +126,29 @@ estado: así un lector puede distinguir "todo en orden" de "nadie está
 mirando". Contrato completo en `docs/SNAPSHOT.md`; montaje de Firebase y reglas de
 seguridad en `docs/RTDB.md`.
 
+### Dejarlo corriendo
+
+`watch` en una pestaña de terminal muere al cerrarla, al cerrar sesión y
+al dormirse la máquina. Para que sobreviva:
+
+```bash
+moon-jules service install               # launchd (macOS) o systemd --user
+moon-jules service install --caffeinate  # además, evita el sueño por inactividad
+moon-jules service status                # ¿cargado? ¿y publicando?
+moon-jules service show                  # ver la definición sin instalar
+moon-jules service uninstall
+```
+
+`service status` distingue dos cosas que se confunden: si el sistema
+tiene el servicio **cargado**, y si de verdad ha completado un ciclo
+hace poco. Lo primero puede ser cierto y lo segundo falso —un error de
+configuración, por ejemplo—, y entonces avisa.
+
+**Cerrar la tapa duerme el portátil y ningún servicio lo impide.**
+`--caffeinate` evita el sueño por inactividad, no el de la tapa. Si esta
+máquina debe vigilar sin supervisión, déjala abierta y conectada, o
+cuenta con que el relevo se disparará.
+
 ### Varias máquinas, una vigilando
 
 ```bash
@@ -183,7 +206,7 @@ cierra issues, ni mergea PRs, ni cambia labels, ni archiva sesiones. La lista co
 y `watch`, con detector calibrado, notificaciones nativas, logging con
 redacción de credenciales, carga desde `.env`, lock de instancia única,
 triaje de hallazgos, historial local, interruptor de autonomía y
-recalibración del umbral. 244
+recalibración del umbral. 265
 tests, incluido un barrido de secretos sobre todo el árbol.
 
 `moon-jules doctor` mide la latencia real de tu API y proyecta el coste
@@ -199,8 +222,8 @@ notificación del sistema, deja rastro en disco y no se pisa consigo mismo.
 
 Publica su estado para lectores externos (`docs/SNAPSHOT.md`).
 
-Pendiente: empaquetado, vigilancia del contrato del API y verificación
-de `sendMessage` sobre sesión terminal. Ver `docs/BACKLOG.md`.
+Pendiente: vigilancia del contrato del API y verificación de
+`sendMessage` sobre sesión terminal. Ver `docs/BACKLOG.md`.
 
 ## Documentación
 

@@ -164,7 +164,10 @@ prescindible y decisión del arquitecto. Si el API lo acepta, habilita
 el reintento automático de sesiones `FAILED` en `full_auto`.
 *Bloqueada por: decisión del arquitecto.*
 
-### E12 — Empaquetado y arranque
-`pipx install`, unidad `systemd --user` y `launchd` de ejemplo, con
-`watch` como servicio opcional. Sin demonio obligatorio (Inception §6).
-*Depende de: E02, E04.*
+### E12 — Arranque persistente *(entrega 17)*
+`moon-jules service install` genera e instala el agente de usuario:
+`launchd` en macOS, `systemd --user` en Linux. Rutas absolutas y PATH
+explícito —launchd no expande `~` ni hereda entorno—, y `ThrottleInterval`
+para que un error de configuración no produzca un bucle de reinicio.
+`service status` separa "cargado" de "publicando", que no es lo mismo.
+Sigue sin ser obligatorio: `watch` a mano funciona igual (Inception §6).

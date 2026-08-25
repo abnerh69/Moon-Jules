@@ -142,6 +142,15 @@ Contrato verificado el 2026-08-24 contra el API en vivo:
 El discovery doc (`https://jules.googleapis.com/$discovery/rest?version=v1alpha`)
 sí lo es, y es público. Ante duda, consúltalo.
 
+## El servicio no se prueba solo
+
+`src/moon_jules/service.py` genera plists y unidades que **nadie puede
+ejecutar en CI**: `launchctl` no existe fuera de macOS. Lo que se prueba
+es lo generado, y por eso los tests de `tests/test_service.py` son
+específicos hasta la pedantería —rutas absolutas, PATH explícito,
+ThrottleInterval—. No los relajes: un plist mal formado falla en la
+máquina del arquitecto y en ningún otro sitio.
+
 ## El snapshot es un contrato
 
 `docs/SNAPSHOT.md` describe lo que Moon-Jules publica y lo que una app

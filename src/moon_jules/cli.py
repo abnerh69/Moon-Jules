@@ -741,6 +741,57 @@ async def cmd_relay(cfg: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+async def cmd_service(cfg: Config, args: argparse.Namespace) -> int:
+    from . import service as svc
+
+    if args.accion == "status":
+        est = svc.estado()
+        print(f"sistema     {est['sistema']}")
+        print(f"instalado   {'si' if est.get('instalado') else 'no'}")
+        print(f"cargado     {'si' if est.get('cargado') else 'no'}")
+        for campo in ("pid", "ultima_salida", "estado"):
+            if est.get(campo) is not None:
+                print(f"{campo:<12}{est[campo]}")
+        # Cargado no es lo mismo que funcionando: el dato que importa es
+        # si algo se ha publicado hace poco.
+        with Store(cfg.state_path) as store:
+            fila = store.db.execute(
+                "SELECT MAX(seen_at) AS m FROM sessions"
+            ).fetchone()
+        visto = fila["m"] if fila else None
+        if visto:
+            edad = (now() - datetime.fromisoformat(visto)).total_seconds()
+            print(f"ultimo ciclo hace {humano(edad)}")
+            if edad > 4 * cfg.poll_interval_s:
+                print("aviso       cargado pero sin ciclos recientes: "
+                      "revisa el log o `service show`")
+        else:
+            print("ultimo ciclo (ninguno todavia)")
+        return 0
+
+    if args.accion == "uninstall":
+        print("servicio retirado." if svc.desinstalar() else "no habia servicio instalado.")
+        return 0
+
+    env = svc.detectar(cfg.log_dir, args.config, caffeinate=getattr(args, "caffeinate", False))
+    if args.accion == "show":
+        import platform as _p
+
+        if _p.system() == "Darwin":
+            sys.stdout.write(svc.plist(env).decode("utf-8"))
+        else:
+            sys.stdout.write(svc.unit(env))
+        return 0
+
+    destino = svc.instalar(env)
+    print(f"servicio instalado en {destino}")
+    print(f"ejecuta: {' '.join(env.argumentos)}")
+    aviso = svc.aviso_sueno()
+    if aviso:
+        print(f"\naviso       {aviso}")
+    return 0
+
+
 async def cmd_pause(cfg: Config, args: argparse.Namespace) -> int:
     """Corta la autonomia sin abrir un editor. ADR-005."""
     hasta = None
@@ -959,7 +1010,7 @@ async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
                                 standby=rol == "standby",
                             )
                             ciclo += 1
-                            _emit(report, notifier)
+                            _emit(report, notifier, quiet=args.quiet)
                             if sink is not None:
                                 # En cada ciclo, cambie o no el estado: el
                                 # latido es la mitad del valor del snapshot.
@@ -992,10 +1043,11 @@ async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
     return 0
 
 
-def _emit(report: Report, notifier: Notifier) -> None:
+def _emit(report: Report, notifier: Notifier, quiet: bool = False) -> None:
     stamp = report.at.strftime("%H:%M:%S")
     if report.attention:
-        print(f"\n[{stamp}]\n{render(report, only_attention=True)}")
+        if not quiet:
+            print(f"\n[{stamp}]\n{render(report, only_attention=True)}")
         for f in report.attention:
             log.warning(
                 "%s %s (%s): %s",
@@ -1008,7 +1060,8 @@ def _emit(report: Report, notifier: Notifier) -> None:
         if n:
             log.info("%d notificacion(es) enviada(s)", n)
     else:
-        print(f"[{stamp}] {len(report.findings)} sesiones, todo en orden")
+        if not quiet:
+            print(f"[{stamp}] {len(report.findings)} sesiones, todo en orden")
         log.info("ciclo limpio: %d sesiones", len(report.findings))
 
 
@@ -1023,6 +1076,7 @@ COMMANDS = {
     "calibrate": cmd_calibrate,
     "publish": cmd_publish,
     "relay": cmd_relay,
+    "service": cmd_service,
     "pause": cmd_pause,
     "resume": cmd_resume,
 }
@@ -1105,6 +1159,18 @@ def build_parser() -> argparse.ArgumentParser:
     w = sub.add_parser("watch", parents=[common], help="bucle de vigilancia")
     w.add_argument("--dry-run", action="store_true",
                    help="dictamina sin ejecutar ninguna accion")
+    w.add_argument("--quiet", action="store_true",
+                   help="sin salida periodica por consola; usa el log rotado")
+
+    sv = sub.add_parser("service", parents=[common],
+                        help="arranque persistente (launchd o systemd)")
+    sv_sub = sv.add_subparsers(dest="accion", required=True)
+    sv_i = sv_sub.add_parser("install", help="instala y arranca el servicio")
+    sv_i.add_argument("--caffeinate", action="store_true",
+                      help="evita el sueno por inactividad (no el de la tapa)")
+    sv_sub.add_parser("uninstall", help="detiene y retira el servicio")
+    sv_sub.add_parser("status", help="que dice el sistema, y si publica")
+    sv_sub.add_parser("show", help="imprime la definicion sin instalar nada")
     return p
 
 
