@@ -192,6 +192,23 @@ Map<String, List<SesionVista>> agruparPorRepo(List<SesionVista> sesiones) {
   return salida;
 }
 
+/// Cuánto tiempo mostrar de una sesión en la lista, ya etiquetado.
+///
+/// Un guion no comunica nada, y era lo que salía en las sesiones
+/// fallidas: su `silence_s` viene ausente porque el reloj está
+/// congelado. Pero la edad sí se conoce, y para una sesión muerta hace
+/// meses es justo el dato que interesa.
+///
+/// Se etiqueta a propósito. **Muda y abierta son preguntas distintas**,
+/// y presentarlas sin nombre en la misma columna las haría pasar por lo
+/// mismo: una sesión puede llevar tres horas abierta y treinta segundos
+/// muda, o al revés.
+String resumenTiempo(SesionVista s) {
+  if (s.silencio != null) return 'muda ${humano(s.silencio)}';
+  if (s.edad != null) return 'abierta ${humano(s.edad)}';
+  return '';
+}
+
 /// Duración legible. Misma escala que la CLI: `144270 min` no dice nada.
 String humano(Duration? d) {
   if (d == null) return '—';

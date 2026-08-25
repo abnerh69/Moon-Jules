@@ -35,7 +35,14 @@ class PantallaSesion extends ConsumerWidget {
                 _Dato('Diagnóstico', sesion.razon),
                 // Dos preguntas distintas, y confundirlas es el error
                 // fácil: cuánto lleva callada y cuánto lleva abierta.
-                _Dato('Sin señal del agente', humano(sesion.silencio)),
+                // Cuando el reloj esta congelado no hay silencio que
+                // medir, y decirlo es mas util que un guion.
+                _Dato(
+                  'Sin señal del agente',
+                  sesion.silencio == null
+                      ? 'el reloj está detenido: la sesión cerró'
+                      : humano(sesion.silencio),
+                ),
                 _Dato('Lleva abierta', humano(sesion.edad)),
                 if (sesion.nudges > 0) ...[
                   const Divider(),

@@ -182,21 +182,29 @@ class _FilaSesion extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tiempo = resumenTiempo(sesion);
     return ListTile(
+      dense: true,
+      visualDensity: VisualDensity.compact,
       leading: Icon(
         sesion.veredicto.esCanario ? Icons.warning_amber : Icons.error_outline,
         color: sesion.veredicto.esCanario ? Colors.amber : Colors.redAccent,
       ),
+      // Una linea. Con nueve entradas, un titulo de dos empuja el motivo
+      // fuera de la pantalla y obliga a desplazarse para leer poco.
       title: Text(
         sesion.titulo ?? sesion.id,
-        maxLines: 2,
+        maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      subtitle: Text(sesion.razon),
-      // `humano` devuelve un guion cuando el silencio es desconocido, que
-      // no es lo mismo que cero: el reloj está congelado porque la
-      // sesión cerró.
-      trailing: Text(humano(sesion.silencio)),
+      // El tiempo va aqui y no en una columna aparte: etiquetado cabe, y
+      // sin etiqueta se confundiria "muda" con "abierta".
+      subtitle: Text(
+        tiempo.isEmpty ? sesion.razon : '$tiempo · ${sesion.razon}',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: const Icon(Icons.chevron_right, size: 18),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => PantallaSesion(id: sesion.id),

@@ -200,6 +200,14 @@ Encontrado en campo: activar el push apagaba el aviso local aunque
 sin ninguna alerta efectiva, porque el push no tenía destinatario. Ahora
 avisan las dos y se deja constancia en el log cuando ninguna entrega.
 
+### E35 — Pulido de la lista *(entrega 24)*
+De la primera captura en el móvil. Faltaba `uses-material-design`, así
+que los iconos salían como cuadraditos. Las sesiones fallidas mostraban
+un guion en la columna de tiempo —correcto, porque su reloj está
+congelado, pero mudo—: ahora muestran la edad, etiquetada, porque muda
+y abierta son preguntas distintas. Y cada fila cabe en dos líneas: con
+nueve entradas, un título de dos empujaba el motivo fuera de pantalla.
+
 ## Siguiente ola
 
 ## Retirado

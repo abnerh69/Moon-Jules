@@ -101,6 +101,19 @@ en escritorio, añade a `macos/Runner/DebugProfile.entitlements` y a
 `firebase_messaging` en macOS necesita además capacidades de push y un
 perfil de Apple. Esta versión no las usa: solo mira.
 
+## Por qué la lista se ve así
+
+Cada fila cabe en dos líneas. Con nueve sesiones en problema, un título
+de dos líneas empuja el motivo fuera de pantalla y obliga a desplazarse
+para leer poco.
+
+El tiempo va dentro del subtítulo y **etiquetado**: `muda 52 min` o
+`abierta 103 d`. Muda y abierta son preguntas distintas —una sesión
+puede llevar tres horas abierta y treinta segundos muda— y en una
+columna sin nombre pasarían por lo mismo. Las fallidas no tienen tiempo
+de silencio, porque su reloj está congelado; ahí se muestra la edad, que
+sí se conoce.
+
 ## Lo que falta
 
 El registro de FCM y los botones de acción. Se dejaron fuera a

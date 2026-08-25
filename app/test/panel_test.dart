@@ -194,4 +194,31 @@ void main() {
       expect(humano(const Duration(days: 100)), '100 d');
     });
   });
+
+  group('qué tiempo se muestra en la lista', () {
+    test('si se sabe cuánto lleva muda, eso', () {
+      expect(resumenTiempo(SesionVista.desdeJson(vivaReal)), 'muda 2 min');
+    });
+
+    test('si el reloj está congelado, la edad, y etiquetada', () {
+      // Encontrado en la primera captura: las fallidas mostraban un
+      // guion, que es correcto pero no comunica nada. La edad sí se
+      // conoce y para una sesión muerta hace meses es lo que interesa.
+      final s = SesionVista.desdeJson(fallidaReal);
+      expect(s.silencio, isNull);
+      expect(resumenTiempo(s), 'abierta 102 d');
+    });
+
+    test('las etiquetas distinguen dos preguntas distintas', () {
+      // Una sesión puede llevar tres horas abierta y treinta segundos
+      // muda: sin nombre, la misma columna las haría pasar por lo mismo.
+      final joven = {...vivaReal, 'silence_s': 30, 'age_s': 10800};
+      expect(resumenTiempo(SesionVista.desdeJson(joven)), 'muda 30 s');
+    });
+
+    test('sin ninguno de los dos, cadena vacía y no un guion suelto', () {
+      final pelada = SesionVista.desdeJson({'id': 'x', 'repo': 'a/b'});
+      expect(resumenTiempo(pelada), '');
+    });
+  });
 }
