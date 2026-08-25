@@ -44,7 +44,7 @@ from .lock import AlreadyRunningError, InstanceLock
 from .logs import configure as configure_logs
 from .logs import get as get_logger
 from .models import AutonomyMode, Session, SessionState
-from .notify import Notifier
+from .notify import Notifier, NullBackend
 from .publish import (
     Control,
     FileSink,
@@ -1041,11 +1041,14 @@ async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
                 sink = crear_sink(cfg)
                 ciclo = 0
                 rol_previo = ""
+                push = crear_backend_push(cfg, sink)
                 notifier = Notifier(
                     store,
                     enabled=cfg.notify.enabled,
                     cooldown_s=cfg.notify.cooldown_s,
-                    backend=crear_backend_push(cfg, sink),
+                    # Si hay push configurado manda ese; el local solo se
+                    # usa cuando es la unica via pedida.
+                    backend=push or (None if cfg.notify.local else NullBackend()),
                 )
                 log.info(
                     "watch iniciado: intervalo=%ss N=%ss modo=%s notificaciones=%s",

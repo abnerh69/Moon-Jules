@@ -165,6 +165,20 @@ snapshot tenía dos formas según el destino. Ahora se podan antes de
 publicar y el contrato es uno solo: **clave ausente significa
 desconocida, nunca cero**.
 
+### E30 — Capa de datos de la app *(entrega 21)*
+`app/lib/src/model/` en Dart puro —sin Flutter— con el modelo del
+esquema 3, la caducidad del latido y las órdenes. **36 tests
+verificados** con el SDK de Dart. `app/lib/src/data/` es el pegamento
+con Firebase y la única capa sin cubrir, a propósito: cuanto más fina,
+menos código sin verificar. Falta el andamiaje de Flutter y la pantalla.
+
+### E31 — Las dos vías de aviso se separan *(entrega 21)*
+`notify.local` y `notify.fcm` son cosas distintas: la primera avisa a la
+máquina que vigila, la segunda a donde está el arquitecto. Con la
+vigilante en otro país se quiere la segunda sin la primera. Además,
+`fcm = true` con `enabled = false` era una contradicción silenciosa y
+ahora es error de arranque.
+
 ## Siguiente ola
 
 ## Retirado

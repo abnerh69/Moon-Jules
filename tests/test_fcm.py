@@ -203,3 +203,68 @@ def test_lo_sano_no_notifica(tmp_path):
         assert Notifier(store, enabled=True, backend=backend(estalla)).notify_findings(
             [sano], NOW
         ) == 0
+
+
+# --------------------------------------------------------------------
+# las dos vías no son la misma cosa
+# --------------------------------------------------------------------
+
+
+def test_fcm_sin_enabled_es_error_de_arranque(tmp_path):
+    """Contradicción silenciosa: con `enabled = false` el notificador
+    está apagado entero y el push nunca saldría. Mejor no arrancar."""
+    import os
+
+    from moon_jules.config import ConfigError, load
+
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        '[jules]\napi_key = "env:MJ_F"\n[notify]\nenabled = false\nfcm = true\n'
+    )
+    os.environ["MJ_F"] = "x"
+    try:
+        with pytest.raises(ConfigError, match="nunca saldria"):
+            load(cfg)
+    finally:
+        del os.environ["MJ_F"]
+
+
+def test_avisar_sin_ninguna_via_tampoco_tiene_sentido(tmp_path):
+    import os
+
+    from moon_jules.config import ConfigError, load
+
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        '[jules]\napi_key = "env:MJ_F2"\n'
+        "[notify]\nenabled = true\nlocal = false\nfcm = false\n"
+    )
+    os.environ["MJ_F2"] = "x"
+    try:
+        with pytest.raises(ConfigError, match="no hay por donde avisar"):
+            load(cfg)
+    finally:
+        del os.environ["MJ_F2"]
+
+
+def test_se_puede_avisar_al_movil_sin_molestar_al_portatil(tmp_path):
+    """El caso que motiva separarlas: la máquina que vigila está en otro
+    país y el aviso local no lo ve nadie."""
+    import os
+
+    from moon_jules.config import load
+
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        '[jules]\napi_key = "env:MJ_F3"\n'
+        "[notify]\nenabled = true\nlocal = false\nfcm = true\n"
+        '[publish]\nenabled = true\ntarget = "rtdb"\n'
+        '[publish.rtdb]\nurl = "https://x.firebaseio.com"\nauth = "env:MJ_T"\n'
+    )
+    os.environ.update({"MJ_F3": "x", "MJ_T": "t"})
+    try:
+        c = load(cfg)
+        assert c.notify.fcm and not c.notify.local
+    finally:
+        for k in ("MJ_F3", "MJ_T"):
+            del os.environ[k]

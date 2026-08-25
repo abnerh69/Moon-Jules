@@ -141,10 +141,19 @@ class RelayConfig:
 
 @dataclass(frozen=True)
 class NotifyConfig:
+    """Dos vias que no son la misma cosa.
+
+    `local` avisa a la maquina que vigila; `fcm` avisa a donde esta el
+    arquitecto. Cuando la vigilante esta en otro pais, se quiere lo
+    segundo sin lo primero, y un unico interruptor no lo permitia.
+    """
+
     enabled: bool = False
     cooldown_s: int = 3600
-    #: Envia ademas notificacion push a los dispositivos registrados.
-    #: Requiere publish.target = "rtdb" con cuenta de servicio.
+    #: Notificacion del sistema operativo en la maquina que vigila.
+    local: bool = True
+    #: Push a los dispositivos registrados. Requiere rtdb con cuenta de
+    #: servicio.
     fcm: bool = False
 
 
@@ -277,8 +286,23 @@ def load(path: Path | None = None, *, dotenv: Path | None = None) -> Config:
     notify = NotifyConfig(
         enabled=bool(n.get("enabled", False)),
         cooldown_s=int(n.get("cooldown_s", 3600)),
+        local=bool(n.get("local", True)),
         fcm=bool(n.get("fcm", False)),
     )
+    if notify.fcm and not notify.enabled:
+        # Contradiccion silenciosa: con `enabled = false` el notificador
+        # esta apagado entero y el backend de FCM nunca se usa. Mejor no
+        # arrancar que arrancar sin avisar a nadie.
+        raise ConfigError(
+            "notify.fcm = true pero notify.enabled = false: las "
+            "notificaciones estan apagadas y el push nunca saldria. "
+            "Pon enabled = true."
+        )
+    if notify.enabled and not (notify.local or notify.fcm):
+        raise ConfigError(
+            "notify.enabled = true pero ni local ni fcm estan activos: "
+            "no hay por donde avisar."
+        )
 
     pub_raw = raw.get("publish") or {}
     rtdb_raw = pub_raw.get("rtdb") or {}

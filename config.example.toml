@@ -53,9 +53,13 @@ enabled           = false
 active_by_default = false   # mientras nadie este designado, nadie actua
 
 [notify]
-enabled    = false   # requiere osascript (macOS) o notify-send (Linux)
+enabled    = false   # interruptor general de las notificaciones
 cooldown_s = 3600    # no repetir la misma alerta antes de esto
+local      = true    # aviso del sistema en la maquina que vigila
 fcm        = false   # push al movil; requiere rtdb con cuenta de servicio
+#
+# Con la maquina vigilante en otro pais, lo util suele ser:
+#   enabled = true, local = false, fcm = true
 
 # Politica por source. El nombre es el `name` que devuelve `moon-jules sources`.
 # Todo lo que no se declare hereda de [watch].
