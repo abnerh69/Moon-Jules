@@ -33,6 +33,20 @@ class PantallaSesion extends ConsumerWidget {
                 _Dato('Estado', sesion.estado),
                 _Dato('Veredicto', sesion.veredicto.clave),
                 _Dato('Diagnóstico', sesion.razon),
+                // Lo que Jules dijo de verdad. Suele ser una pregunta
+                // sin responder, y sin esto moría dentro de la sesión.
+                if (sesion.mensajeAgente != null) ...[
+                  const Divider(),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: Text('Último mensaje de Jules',
+                        style: Theme.of(context).textTheme.labelMedium),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(sesion.mensajeAgente!),
+                  ),
+                ],
                 // Dos preguntas distintas, y confundirlas es el error
                 // fácil: cuánto lleva callada y cuánto lleva abierta.
                 // Cuando el reloj esta congelado no hay silencio que

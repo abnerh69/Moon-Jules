@@ -159,8 +159,6 @@ cuenta con que el relevo se disparará.
 
 ```bash
 moon-jules relay                  # quién está designado y quién reclamó
-moon-jules relay la-dorada        # designa una instancia
-moon-jules relay --none           # retira la designación
 ```
 
 Con `relay.enabled = true` y `publish.target = "rtdb"`, varias máquinas
@@ -168,10 +166,14 @@ pueden ejecutar `watch` a la vez pero solo una actúa. Las demás siguen
 vigilando y publicando su latido —están vivas y disponibles—, sin tocar
 Jules.
 
+**Designar se hace desde la app**, no desde aquí: las reglas reservan esa
+escritura al arquitecto, porque una máquina no puede autodesignarse. Y
+el momento de necesitarlo es justo cuando una cayó y tú estás en otro
+sitio.
+
 Designar es **proponer**: la instancia elegida confirma escribiendo su
-reclamación. Si designas una máquina dormida, nadie recoge el encargo y
-eso se ve; y con las reglas de `docs/RTDB.md`, Firebase directamente lo
-rechaza. Lo normal es hacerlo desde la app.
+reclamación. Firebase rechaza designar una máquina cuyo latido haya
+caducado.
 
 Desde la app también se pueden ordenar acciones concretas —desatascar
 una sesión, silenciar, pausar— con caducidad e idempotencia. Contrato en
@@ -235,7 +237,7 @@ Pendiente: vigilancia del contrato del API y verificación de
 
 `app/` contiene el panel que consume lo publicado. Su capa de datos y su
 lógica de presentación son Dart puro y se prueban sin emulador: `cd app
-&& flutter test` (54 tests). Ver `app/README.md`.
+&& flutter test` (61 tests). Ver `app/README.md`.
 
 ## Documentación
 

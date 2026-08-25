@@ -13,11 +13,43 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../model/panel.dart';
 import '../providers.dart';
 
-class PantallaRelevo extends ConsumerWidget {
+class PantallaRelevo extends ConsumerStatefulWidget {
   const PantallaRelevo({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PantallaRelevo> createState() => _PantallaRelevoState();
+}
+
+class _PantallaRelevoState extends ConsumerState<PantallaRelevo> {
+  String? _trabajando;
+
+  /// Designa una instancia.
+  ///
+  /// Es una **propuesta**: las reglas rechazan designar una máquina cuyo
+  /// latido esté caducado, así que un permiso denegado aquí significa
+  /// "esa está caída", no "no tienes acceso". Merece decirse con esas
+  /// palabras: el mensaje crudo de Firebase mandaría a revisar las
+  /// credenciales, que es el sitio equivocado.
+  Future<void> _designar(TarjetaInstancia destino) async {
+    setState(() => _trabajando = destino.id);
+    String? error;
+    try {
+      await ref.read(repositorioProvider).designar(destino.id);
+    } on Object catch (e) {
+      error = destino.salud == SaludInstancia.callada
+          ? '${destino.id} lleva sin publicar ${humano(destino.silencio)}: '
+              'Firebase no deja designar una máquina caída.'
+          : 'No se pudo designar: $e';
+    }
+    if (!mounted) return;
+    setState(() => _trabajando = null);
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final panel = ref.watch(panelProvider).valueOrNull;
     final control = panel?.control;
     return Scaffold(
@@ -69,13 +101,32 @@ class PantallaRelevo extends ConsumerWidget {
                               'designar'
                           : 'latido hace ${humano(i.silencio)}',
                     ),
+                    trailing: _trabajando == i.id
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : (control?.designada == i.id
+                            ? const Icon(Icons.check, color: Colors.green)
+                            : TextButton(
+                                // Se deja pulsable aunque esté callada:
+                                // el rechazo viene de las reglas y su
+                                // mensaje explica el motivo mejor que un
+                                // botón gris sin explicación.
+                                onPressed: _trabajando != null
+                                    ? null
+                                    : () => _designar(i),
+                                child: const Text('Designar'),
+                              )),
                   ),
                 const Padding(
                   padding: EdgeInsets.all(16),
                   child: Text(
-                    'Cambiar la instancia habilitada llegará en la siguiente '
-                    'versión. Por ahora, desde la terminal: '
-                    'moon-jules relay <instancia>',
+                    'Designar es proponer: la instancia elegida confirma '
+                    'escribiendo su reclamación en el siguiente ciclo. '
+                    'Firebase rechaza designar una máquina cuyo latido haya '
+                    'caducado.',
                   ),
                 ),
               ],

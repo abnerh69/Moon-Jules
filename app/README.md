@@ -114,8 +114,23 @@ columna sin nombre pasarían por lo mismo. Las fallidas no tienen tiempo
 de silencio, porque su reloj está congelado; ahí se muestra la edad, que
 sí se conoce.
 
+## Lo que la app sí escribe
+
+Un solo campo: `control/desired`, al designar qué instancia vigila. Y es
+**una propuesta, no una orden cumplida**: la instancia elegida confirma
+en su siguiente ciclo escribiendo su reclamación, y la pantalla muestra
+las dos cosas.
+
+Designar vive aquí y no en la CLI porque las reglas lo reservan al
+arquitecto: **una máquina no puede autodesignarse**. Y porque el momento
+de necesitarlo es justo cuando una máquina cayó y tú estás en otro sitio.
+
+Firebase rechaza designar una instancia cuyo latido haya caducado. El
+botón se deja pulsable a propósito: el mensaje del rechazo explica el
+motivo mejor que un botón gris sin explicación.
+
 ## Lo que falta
 
-El registro de FCM y los botones de acción. Se dejaron fuera a
-propósito: una app que solo lee es imposible que rompa nada, y la
-capacidad de tocar Jules desde el bolsillo se gana, no se asume.
+El registro de FCM y los botones que tocan Jules —desatascar, silenciar,
+pausar—. Se dejaron fuera a propósito: la capacidad de actuar sobre el
+enjambre desde el bolsillo se gana, no se asume.

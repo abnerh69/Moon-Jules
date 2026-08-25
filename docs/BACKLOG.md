@@ -208,6 +208,19 @@ congelado, pero mudo—: ahora muestran la edad, etiquetada, porque muda
 y abierta son preguntas distintas. Y cada fila cabe en dos líneas: con
 nueve entradas, un título de dos empujaba el motivo fuera de pantalla.
 
+### E36 — El mensaje del agente viaja *(entrega 25)*
+Una sesión murió con una pregunta dentro —"¿intento A6 y A9 manualmente?"—
+y el snapshot solo publicaba el `reason` del API, que repite siempre el
+mismo texto inútil. Ahora el último `agentMessaged` se persiste y se
+publica para lo que requiere atención. Esquema 3 → 4.
+
+### E37 — Designar es cosa de la app *(entrega 25)*
+`moon-jules relay <instancia>` intentaba escribir `control/desired` y
+siempre fallaba: las reglas lo reservan al arquitecto porque una máquina
+no puede autodesignarse. Dos entregas contradiciéndose. El comando queda
+solo consultando y el botón vive en la app, que es donde estás cuando
+una máquina cae.
+
 ## Siguiente ola
 
 ## Retirado

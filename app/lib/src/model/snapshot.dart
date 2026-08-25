@@ -9,7 +9,7 @@
 library;
 
 /// Versión del esquema que esta app entiende.
-const int kEsquemaSoportado = 3;
+const int kEsquemaSoportado = 4;
 
 /// Lanzada cuando el snapshot viene en una versión desconocida.
 ///
@@ -110,6 +110,7 @@ class SesionVista {
     this.nudges = 0,
     this.ultimoNudgeEn,
     this.ultimoNudgeDesenlace,
+    this.mensajeAgente,
   });
 
   factory SesionVista.desdeJson(Map<String, Object?> json) {
@@ -131,6 +132,7 @@ class SesionVista {
       nudges: leerEntero(json['nudges']) ?? 0,
       ultimoNudgeEn: leerTexto(json['last_nudge_at']),
       ultimoNudgeDesenlace: leerTexto(json['last_nudge_outcome']),
+      mensajeAgente: leerTexto(json['last_agent_message']),
     );
   }
 
@@ -153,6 +155,13 @@ class SesionVista {
   final int nudges;
   final String? ultimoNudgeEn;
   final String? ultimoNudgeDesenlace;
+
+  /// Lo último que dijo Jules, si dijo algo.
+  ///
+  /// Es donde está la información: `reason` repite siempre "unable to
+  /// complete the task", mientras que el agente suele explicar qué hizo
+  /// o qué necesita. Solo viaja para lo que requiere atención.
+  final String? mensajeAgente;
 
   bool get estaViva => estado == 'IN_PROGRESS' || estado == 'PLANNING';
 

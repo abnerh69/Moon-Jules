@@ -200,7 +200,9 @@ class _FilaSesion extends StatelessWidget {
       // El tiempo va aqui y no en una columna aparte: etiquetado cabe, y
       // sin etiqueta se confundiria "muda" con "abierta".
       subtitle: Text(
-        tiempo.isEmpty ? sesion.razon : '$tiempo · ${sesion.razon}',
+        tiempo.isEmpty
+            ? resumenMotivo(sesion)
+            : '$tiempo · ${resumenMotivo(sesion)}',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),

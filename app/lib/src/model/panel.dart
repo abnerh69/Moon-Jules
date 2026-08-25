@@ -192,6 +192,18 @@ Map<String, List<SesionVista>> agruparPorRepo(List<SesionVista> sesiones) {
   return salida;
 }
 
+/// Qué motivo mostrar en la lista.
+///
+/// Se prefiere lo que dijo el agente. El `reason` del API es siempre el
+/// mismo texto —"unable to complete the task"— repetido en cada fila:
+/// ocupa media pantalla para no decir nada, mientras que el mensaje del
+/// agente suele explicar qué hizo o qué preguntó.
+String resumenMotivo(SesionVista s) {
+  final dicho = s.mensajeAgente;
+  if (dicho != null && dicho.isNotEmpty) return dicho;
+  return s.razon;
+}
+
 /// Cuánto tiempo mostrar de una sesión en la lista, ya etiquetado.
 ///
 /// Un guion no comunica nada, y era lo que salía en las sesiones

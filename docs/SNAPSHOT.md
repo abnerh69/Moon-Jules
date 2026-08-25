@@ -1,10 +1,11 @@
 # Contrato del snapshot
 
 ```meta
-Esquema:  3
-Desde:    Moon-Jules v0.12.0 (entrega 16)
+Esquema:  4
+Desde:    Moon-Jules v0.18.0 (entrega 25)
 Historia: 1 — entrega 13. 2 — añade `control` y `instance.role`.
           3 — añade `instance.heartbeat_ms` y el canal de comandos.
+          4 — añade `sessions[].last_agent_message`.
 Estado:   Estable
 ```
 
@@ -196,6 +197,7 @@ y lo problemático; las completadas sin novedad no viajan.
 | `silence_s` | Segundos sin señal del agente. **Ausente no significa cero**: significa que el reloj está congelado porque la sesión cerró, y ese tiempo es reposo, no silencio. |
 | `age_s` | Segundos desde que se abrió la sesión. Es "cuánto lleva trabajando", pregunta distinta de `silence_s`. |
 | `nudges` | Cuántas veces se le envió el prompt de continuación. |
+| `last_agent_message` | Lo último que dijo Jules, recortado a 400 caracteres. **Solo para lo que requiere atención.** Es donde está la información: `reason` repite siempre "unable to complete the task", mientras el agente suele explicar qué hizo o qué preguntó. |
 | `last_nudge_outcome` | `answered`, `unanswered` o `pending`. **Si aparecen varios `unanswered`, el prompt dejó de funcionar** — eso importa más que cualquier sesión concreta. |
 
 ### Veredictos

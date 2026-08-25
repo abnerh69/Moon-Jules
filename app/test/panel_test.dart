@@ -221,4 +221,27 @@ void main() {
       expect(resumenTiempo(pelada), '');
     });
   });
+
+  group('qué motivo se muestra', () {
+    test('se prefiere lo que dijo el agente', () {
+      // `reason` repite el mismo texto inútil en cada fila; el mensaje
+      // del agente suele explicar qué hizo o qué preguntó.
+      final s = SesionVista.desdeJson({
+        ...fallidaReal,
+        'last_agent_message': '¿Intento A6 y A9 manualmente?',
+      });
+      expect(resumenMotivo(s), '¿Intento A6 y A9 manualmente?');
+    });
+
+    test('sin mensaje, el motivo del detector', () {
+      expect(resumenMotivo(SesionVista.desdeJson(fallidaReal)),
+          contains('unable to complete'));
+    });
+
+    test('un mensaje vacío no tapa el motivo', () {
+      final s = SesionVista.desdeJson(
+          {...fallidaReal, 'last_agent_message': ''});
+      expect(resumenMotivo(s), contains('unable to complete'));
+    });
+  });
 }

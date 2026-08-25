@@ -46,7 +46,7 @@ log = get_logger("publish")
 #: Versión del esquema. Se sube al añadir campos; se sube de mayor al
 #: quitar o cambiar el significado de uno. La app debe rechazar lo que
 #: no entienda en vez de interpretarlo a medias.
-SCHEMA = 3
+SCHEMA = 4
 
 #: Cuántas sesiones caben en el snapshot. Con el tope de 15 concurrentes
 #: del plan, 40 deja sitio de sobra para lo activo más lo que requiere
@@ -161,6 +161,10 @@ def construir(
                 ),
                 "started_at": _iso(s.create_time),
                 "url": s.url,
+                # Lo ultimo que dijo Jules. Solo para lo que requiere
+                # atencion: en una sesion sana es ruido, y el snapshot
+                # se sube entero en cada ciclo.
+                "last_agent_message": s.last_message if f.is_problem else None,
                 "nudges": n.get("count", 0) if n else 0,
                 "last_nudge_at": n.get("sent_at") if n else None,
                 "last_nudge_outcome": n.get("outcome") if n else None,

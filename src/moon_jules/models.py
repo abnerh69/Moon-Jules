@@ -130,6 +130,9 @@ class Session:
     archived: bool = False
     pr_url: str | None = None
     failure_reason: str | None = None
+    #: Ultimo `agentMessaged`. Ahi esta lo que Jules dijo de verdad; el
+    #: `reason` del API es siempre "unable to complete the task".
+    last_message: str | None = None
 
     @property
     def id(self) -> str:
@@ -162,7 +165,9 @@ class Session:
             pr_url=pr,
         )
 
-    def with_failure(self, reason: str | None) -> Session:
+    def with_details(
+        self, reason: str | None = None, message: str | None = None
+    ) -> Session:
         return Session(
             name=self.name,
             state=self.state,
@@ -173,5 +178,10 @@ class Session:
             update_time=self.update_time,
             archived=self.archived,
             pr_url=self.pr_url,
-            failure_reason=reason,
+            failure_reason=reason if reason is not None else self.failure_reason,
+            last_message=message if message is not None else self.last_message,
         )
+
+    def with_failure(self, reason: str | None) -> Session:
+        """Compatibilidad con el nombre anterior."""
+        return self.with_details(reason=reason)

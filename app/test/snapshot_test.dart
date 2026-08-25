@@ -47,7 +47,7 @@ Map<String, Object?> snapshotReal({
   List<Object?>? sesiones,
 }) =>
     {
-      'schema': 3,
+      'schema': kEsquemaSoportado,
       'instance': {
         'cycle_interval_s': 300,
         'heartbeat_ms': latidoMs,
@@ -119,7 +119,7 @@ void main() {
     });
 
     test('el error dice qué hacer', () {
-      expect(const EsquemaIncompatible(99, 3).toString(),
+      expect(const EsquemaIncompatible(99, 4).toString(),
           allOf(contains('99'), contains('Actualiza')));
     });
 

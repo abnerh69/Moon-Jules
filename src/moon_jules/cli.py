@@ -67,6 +67,10 @@ log = get_logger("cli")
 #: 4 de cada 11 fallidas no declaran razon.
 SIN_RAZON = "(sin razon declarada)"
 
+#: Recorte del mensaje del agente. Viaja en cada snapshot y el NO 10
+#: acota lo que se guarda a metadatos, no a contenido.
+MENSAJE_MAX = 400
+
 GLYPH = {
     "healthy": "ok",
     "done": "--",
@@ -146,6 +150,7 @@ class Monitor:
     config: Config
     store: object | None = None  # Store, opcional para `status` en seco
     _reasons: dict[str, str | None] = field(default_factory=dict)
+    _mensajes: dict[str, str] = field(default_factory=dict)
 
     async def cycle(
         self,
@@ -164,6 +169,7 @@ class Monitor:
         acked = self.store.acked_pairs() if self.store else set()
         nudges = self.store.last_nudges() if self.store else {}
         conocidas = self.store.failure_reasons() if self.store else {}
+        mensajes = self.store.last_messages() if self.store else {}
         pausas = self.store.active_pauses(at) if self.store else {}
         report.paused = {k: (r["reason"] or "") for k, r in pausas.items()}
 
@@ -181,8 +187,13 @@ class Monitor:
 
         for s in sessions:
             fresh, cursor = datos.get(s.name) or self._offline_freshness(s)
+            nuevo = self._mensajes.get(s.name)
+            if nuevo or s.name in mensajes:
+                s = s.with_details(message=nuevo or mensajes.get(s.name))
             if s.state is SessionState.FAILED:
-                s = s.with_failure(conocidas.get(s.name) or self._reasons.get(s.name))
+                s = s.with_details(
+                    reason=conocidas.get(s.name) or self._reasons.get(s.name)
+                )
             src = self.config.for_source(s.source)
             if standby or (pausas and (GLOBAL_SCOPE in pausas or s.source in pausas)):
                 # Tanto la pausa como el papel de reserva degradan a
@@ -327,6 +338,7 @@ class Monitor:
             desde = now() - timedelta(seconds=self.config.bootstrap_lookback_s)
             arranque = desde.isoformat().replace("+00:00", "Z")
         acts = await self.client.activities(s.name, after=cursor or arranque)
+        self._recordar_mensaje(s.name, acts)
         fresh = freshness(acts)
         if not fresh.last_agent_at and self.store:
             # El cursor ya consumio las actividades viejas: usa lo guardado.
@@ -344,8 +356,23 @@ class Monitor:
             return fresh, newest.isoformat().replace("+00:00", "Z")
         return fresh, cursor or arranque
 
+    def _recordar_mensaje(self, name: str, acts: list) -> None:
+        """Guarda lo ultimo que dijo el agente, si dijo algo.
+
+        Es donde esta la informacion util: el `reason` del API repite
+        siempre "unable to complete the task", mientras que el agente
+        suele explicar que hizo o que necesita. Se recorta porque esto
+        acaba en un snapshot que se sube en cada ciclo, y porque el
+        NO 10 del Inception acota lo que se guarda a metadatos.
+        """
+        for a in reversed(acts):
+            if a.kind == "agentMessaged" and a.text:
+                self._mensajes[name] = a.text.strip()[:MENSAJE_MAX]
+                return
+
     async def _failure_reason(self, s: Session) -> str:
         acts = await self.client.activities(s.name, limit=None)
+        self._recordar_mensaje(s.name, acts)
         for a in reversed(acts):
             if a.kind == "sessionFailed" and a.text:
                 return a.text
@@ -768,8 +795,14 @@ async def cmd_publish(cfg: Config, args: argparse.Namespace) -> int:
 
 
 async def cmd_relay(cfg: Config, args: argparse.Namespace) -> int:
-    """Consulta o cambia que instancia vigila. Lo normal es hacerlo desde
-    la app; esto existe para operar sin ella."""
+    """Consulta quien vigila. **No designa.**
+
+    Designar es escribir `control/desired`, y las reglas de seguridad lo
+    reservan al arquitecto: una maquina no puede autodesignarse. Este
+    comando intentaba hacerlo y siempre fallaba con permiso denegado —dos
+    entregas mias contradiciendose—. La designacion vive donde tiene
+    sentido: en la app, que es donde estas cuando una maquina cae.
+    """
     if not cfg.relay.enabled:
         print("relay.enabled = false en el config.", file=sys.stderr)
         return 2
@@ -779,8 +812,6 @@ async def cmd_relay(cfg: Config, args: argparse.Namespace) -> int:
         return 2
     yo = instance_id(cfg.publish.instance_id)
     try:
-        if args.instance or args.none:
-            await sink.set_desired(None if args.none else args.instance)
         control = await sink.read_control()
     finally:
         await sink.aclose()
@@ -789,12 +820,16 @@ async def cmd_relay(cfg: Config, args: argparse.Namespace) -> int:
     print(f"designada         {control.desired or '(ninguna)'}")
     print(f"ha reclamado      {control.claimed_by or '(nadie)'}"
           f"{'  ' + control.claimed_at[:19] if control.claimed_at else ''}")
+    if control.desired == yo:
+        print("\npapel             ACTIVA: esta instancia actua")
+    else:
+        print("\npapel             RESERVA: vigila y publica, no actua")
     if control.desired and control.claimed_by != control.desired:
-        # Deseado y real difieren: la designada no ha recogido el
-        # encargo. Suele significar que esa maquina esta dormida.
         print(f"\naviso       {control.desired} fue designada pero no ha "
               f"reclamado.\n            Si no lo hace en un par de ciclos, "
               f"probablemente este apagada.")
+    print("\nPara cambiar quien vigila, usa la app. Las reglas reservan esa\n"
+          "escritura al arquitecto: una maquina no puede autodesignarse.")
     return 0
 
 
@@ -1223,10 +1258,8 @@ def build_parser() -> argparse.ArgumentParser:
     pu.add_argument("--full", action="store_true",
                     help="repagina el historial completo")
 
-    rl = sub.add_parser("relay", parents=[common],
-                        help="consulta o cambia que instancia vigila")
-    rl.add_argument("instance", nargs="?", help="designa esta instancia")
-    rl.add_argument("--none", action="store_true", help="retira la designacion")
+    sub.add_parser("relay", parents=[common],
+                   help="consulta que instancia vigila (designar es cosa de la app)")
 
     hi = sub.add_parser("history", parents=[common], help="historial local de nudges")
     hi.add_argument("--session", help="filtra por sesion")

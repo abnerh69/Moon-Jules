@@ -14,7 +14,7 @@ from pathlib import Path
 from .detector import NudgeRecord
 from .models import Session, SessionState
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 #: Clave de la pausa que afecta a todos los sources.
 GLOBAL_SCOPE = "*"
@@ -28,6 +28,9 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
     # GitHub Action al fusionar el PR. La tabla que garantizaba
     # idempotencia al asignar ya no tiene destinatario.
     6: ("DROP TABLE IF EXISTS assignments",),
+    # Lo ultimo que dijo el agente. El `reason` del API es siempre el
+    # mismo texto inutil; esto es donde de verdad esta la informacion.
+    8: ("ALTER TABLE sessions ADD COLUMN last_message TEXT",),
 }
 
 SCHEMA = """
@@ -42,6 +45,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     last_agent_kind  TEXT,
     activity_cursor  TEXT,
     failure_reason   TEXT,
+    last_message     TEXT,
     seen_at          TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS nudges (
@@ -120,12 +124,28 @@ class Store:
         for version in sorted(MIGRATIONS):
             if version > desde:
                 for sql in MIGRATIONS[version]:
-                    self.db.execute(sql)
+                    self._migrar_una(sql)
         self.db.execute(
             "INSERT INTO meta(key, value) VALUES ('schema_version', ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (str(SCHEMA_VERSION),),
         )
+
+    def _migrar_una(self, sql: str) -> None:
+        """Aplica una migracion tolerando que ya estuviera hecha.
+
+        `CREATE TABLE IF NOT EXISTS` crea las tablas que falten **con el
+        esquema actual**, columnas nuevas incluidas. Si una base vieja no
+        tenia esa tabla, la migracion que anade la columna intentaria
+        anadirla a una tabla que ya nacio con ella. Eso es "ya aplicada",
+        no un error, y mirar el mensaje es lo unico que SQLite ofrece
+        para distinguirlo.
+        """
+        try:
+            self.db.execute(sql)
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc):
+                raise
 
     def close(self) -> None:
         self.db.close()
@@ -158,8 +178,8 @@ class Store:
             INSERT INTO sessions
                 (name, source, state, title, url, created_at,
                  last_agent_at, last_agent_kind, activity_cursor,
-                 failure_reason, seen_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                 failure_reason, last_message, seen_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(name) DO UPDATE SET
                 source=excluded.source,
                 state=excluded.state,
@@ -169,11 +189,13 @@ class Store:
                 last_agent_kind=COALESCE(excluded.last_agent_kind, sessions.last_agent_kind),
                 activity_cursor=COALESCE(excluded.activity_cursor, sessions.activity_cursor),
                 failure_reason=COALESCE(excluded.failure_reason, sessions.failure_reason),
+                last_message=COALESCE(excluded.last_message, sessions.last_message),
                 seen_at=excluded.seen_at
             """,
             (
                 s.name, s.source, s.state.value, s.title, s.url, _iso(s.create_time),
-                _iso(last_agent_at), last_agent_kind, cursor, s.failure_reason, _iso(now),
+                _iso(last_agent_at), last_agent_kind, cursor, s.failure_reason,
+                s.last_message, _iso(now),
             ),
         )
 
@@ -265,6 +287,20 @@ class Store:
                 "failure_reason FROM sessions"
             )
         ]
+
+    def last_messages(self) -> dict[str, str]:
+        """Ultimo mensaje del agente por sesion, si se vio alguno.
+
+        Se persiste porque el cursor incremental solo trae lo nuevo: sin
+        guardarlo, el mensaje se veria una vez y se perderia en el
+        siguiente ciclo.
+        """
+        return {
+            r["name"]: r["last_message"]
+            for r in self.db.execute(
+                "SELECT name, last_message FROM sessions WHERE last_message IS NOT NULL"
+            )
+        }
 
     def failure_reasons(self) -> dict[str, str]:
         """Razones de fallo ya conocidas.
