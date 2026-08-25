@@ -25,11 +25,11 @@ class _PantallaRelevoState extends ConsumerState<PantallaRelevo> {
 
   /// Designa una instancia.
   ///
-  /// Es una **propuesta**: las reglas rechazan designar una máquina cuyo
-  /// latido esté caducado, así que un permiso denegado aquí significa
-  /// "esa está caída", no "no tienes acceso". Merece decirse con esas
-  /// palabras: el mensaje crudo de Firebase mandaría a revisar las
-  /// credenciales, que es el sitio equivocado.
+  /// Es una **propuesta**: la elegida confirma en su siguiente ciclo. El
+  /// botón solo se ofrece cuando puede funcionar, pero las reglas de
+  /// Firebase siguen validando por su cuenta —que la app no lo ofrezca
+  /// está bien; que no pueda aunque tenga un fallo, es mejor—, así que
+  /// el rechazo también se traduce.
   Future<void> _designar(TarjetaInstancia destino) async {
     setState(() => _trabajando = destino.id);
     String? error;
@@ -46,6 +46,30 @@ class _PantallaRelevoState extends ConsumerState<PantallaRelevo> {
     if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
     }
+  }
+
+  /// Qué se ofrece a la derecha de cada instancia.
+  ///
+  /// No se ofrece lo que no puede funcionar: pulsar y recibir un rechazo
+  /// es una acción fallida que la interfaz permitió. El motivo va justo
+  /// debajo, en el subtítulo, para que el botón apagado no quede mudo.
+  Widget _accion(VistaPanel panel, TarjetaInstancia i) {
+    if (_trabajando == i.id) {
+      return const SizedBox(
+        width: 20,
+        height: 20,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+    if (panel.control.designada == i.id) {
+      return const Icon(Icons.check, color: Colors.green);
+    }
+    return TextButton(
+      onPressed: (_trabajando != null || !panel.designable(i))
+          ? null
+          : () => _designar(i),
+      child: const Text('Designar'),
+    );
   }
 
   @override
@@ -87,6 +111,20 @@ class _PantallaRelevoState extends ConsumerState<PantallaRelevo> {
                     ),
                   ),
                 const Divider(),
+                if (panel.ningunaDesignable)
+                  Card(
+                    margin: const EdgeInsets.all(12),
+                    child: ListTile(
+                      leading: const Icon(Icons.block),
+                      title: const Text('No hay a quién designar'),
+                      subtitle: Text(
+                        panel.conectado
+                            ? 'Ninguna instancia está publicando. Hasta que '
+                                'alguna vuelva, no se puede cambiar el relevo.'
+                            : 'Sin conexión no se puede cambiar el relevo.',
+                      ),
+                    ),
+                  ),
                 for (final i in panel.instancias)
                   ListTile(
                     leading: Icon(
@@ -96,37 +134,20 @@ class _PantallaRelevoState extends ConsumerState<PantallaRelevo> {
                     ),
                     title: Text(i.id),
                     subtitle: Text(
-                      i.salud == SaludInstancia.callada
-                          ? 'callada hace ${humano(i.silencio)} — no se puede '
-                              'designar'
-                          : 'latido hace ${humano(i.silencio)}',
+                      panel.motivoNoDesignable(i) == null
+                          ? 'latido hace ${humano(i.silencio)}'
+                          : '${panel.motivoNoDesignable(i)} — no se puede '
+                              'designar',
                     ),
-                    trailing: _trabajando == i.id
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : (control?.designada == i.id
-                            ? const Icon(Icons.check, color: Colors.green)
-                            : TextButton(
-                                // Se deja pulsable aunque esté callada:
-                                // el rechazo viene de las reglas y su
-                                // mensaje explica el motivo mejor que un
-                                // botón gris sin explicación.
-                                onPressed: _trabajando != null
-                                    ? null
-                                    : () => _designar(i),
-                                child: const Text('Designar'),
-                              )),
+                    trailing: _accion(panel, i),
                   ),
                 const Padding(
                   padding: EdgeInsets.all(16),
                   child: Text(
                     'Designar es proponer: la instancia elegida confirma '
-                    'escribiendo su reclamación en el siguiente ciclo. '
-                    'Firebase rechaza designar una máquina cuyo latido haya '
-                    'caducado.',
+                    'escribiendo su reclamación en el siguiente ciclo. Solo '
+                    'se ofrece designar a las que están publicando, y '
+                    'Firebase lo valida además por su cuenta.',
                   ),
                 ),
               ],

@@ -39,11 +39,21 @@ final relojProvider = StreamProvider<DateTime>((ref) async* {
   );
 });
 
+final conexionProvider = StreamProvider<bool>(
+  (ref) => ref.watch(repositorioProvider).conectado(),
+);
+
+final desfaseProvider = StreamProvider<Duration>(
+  (ref) => ref.watch(repositorioProvider).desfaseServidor(),
+);
+
 /// Todo lo que la pantalla principal necesita, ya resuelto.
 final panelProvider = Provider<AsyncValue<VistaPanel>>((ref) {
   final instancias = ref.watch(instanciasProvider);
   final control = ref.watch(controlProvider);
   final ahora = ref.watch(relojProvider);
+  final conectado = ref.watch(conexionProvider);
+  final desfase = ref.watch(desfaseProvider);
 
   return instancias.when(
     loading: () => const AsyncValue.loading(),
@@ -52,7 +62,14 @@ final panelProvider = Provider<AsyncValue<VistaPanel>>((ref) {
       construirPanel(
         lecturas,
         control.valueOrNull ?? const Control(),
-        ahora.valueOrNull ?? DateTime.now().toUtc(),
+        corregirReloj(
+          ahora.valueOrNull ?? DateTime.now().toUtc(),
+          desfase.valueOrNull ?? Duration.zero,
+        ),
+        // Mientras no se sepa, se asume conectado: decir "sin conexión"
+        // en el arranque, antes de que el SDK responda, seria un susto
+        // gratuito en cada apertura.
+        conectado: conectado.valueOrNull ?? true,
       ),
     ),
   );

@@ -62,6 +62,19 @@ class _Contenido extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
+        // Sin conexión, lo primero es decir que el problema es de aquí.
+        // Si no, los latidos rancios de la caché harían acusar a las
+        // tres máquinas de haber muerto a la vez.
+        if (!vista.conectado)
+          _Aviso(
+            icono: Icons.wifi_off,
+            titulo: 'Sin conexión',
+            detalle: vista.antiguedad == null
+                ? 'No hay datos todavía.'
+                : 'Estos datos son de hace ${humano(vista.antiguedad)}. '
+                    'El silencio puede ser de este teléfono, no de las '
+                    'máquinas.',
+          ),
         // La alerta que Moon-Jules no puede dar de sí mismo va primero.
         if (vista.nadieVigila)
           const _Aviso(

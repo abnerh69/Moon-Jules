@@ -72,6 +72,26 @@ class RepositorioMoonJules {
     });
   }
 
+  /// Si el socket con Firebase está vivo.
+  ///
+  /// `.info/connected` es estado **local del SDK**: no viaja por la red,
+  /// así que responde al instante incluso sin conexión, que es
+  /// exactamente cuando hace falta saberlo. Cuelga de la raíz de la
+  /// base, no de `root`.
+  Stream<bool> conectado() => _db.ref('.info/connected').onValue.map(
+        (e) => e.snapshot.value == true,
+      );
+
+  /// Desfase entre el reloj del teléfono y el del servidor.
+  ///
+  /// La caducidad del latido se calcula contra la hora local, así que un
+  /// móvil desajustado daría por caídas máquinas sanas, o al revés.
+  Stream<Duration> desfaseServidor() =>
+      _db.ref('.info/serverTimeOffset').onValue.map((e) {
+        final ms = e.snapshot.value;
+        return Duration(milliseconds: ms is num ? ms.toInt() : 0);
+      });
+
   Stream<Control> control() => _db.ref(rutas.control()).onValue.map(
         (e) => Control.desdeJson(_mapa(e.snapshot.value)),
       );

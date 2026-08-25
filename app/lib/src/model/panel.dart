@@ -54,10 +54,21 @@ class VistaPanel {
     required this.instancias,
     required this.control,
     this.deQuienLeemos,
+    this.conectado = true,
   });
 
   final List<TarjetaInstancia> instancias;
   final Control control;
+
+  /// Si el teléfono tiene conexión con Firebase.
+  ///
+  /// Es la distinción que evita la peor confusión posible en esta app.
+  /// El SDK sirve de **caché sin conexión**: sigue entregando el último
+  /// snapshot conocido, con latidos de hace horas. Sin este dato, la
+  /// pantalla acusaría a las tres máquinas de haber muerto cuando lo
+  /// que pasa es que el móvil está en un ascensor — el mismo engaño que
+  /// motiva el proyecto entero, una capa más arriba.
+  final bool conectado;
 
   /// Instancia cuyo snapshot se usa para el detalle del enjambre.
   ///
@@ -78,10 +89,50 @@ class VistaPanel {
   /// Es la alerta más importante que la app puede dar, porque es la
   /// única que Moon-Jules **no puede** dar de sí mismo: la máquina que
   /// se cayó no avisa de que se cayó.
+  ///
+  /// Sin conexión no se afirma: no hay forma de saberlo, y acusar a las
+  /// máquinas de algo que quizá sea culpa del móvil sería mentir con la
+  /// misma autoridad que se pretende evitar.
   bool get nadieVigila =>
-      instancias.isEmpty ||
-      instancias.every((i) => i.salud != SaludInstancia.vigilando &&
-          i.salud != SaludInstancia.enReserva);
+      conectado &&
+      (instancias.isEmpty ||
+          instancias.every((i) => i.salud != SaludInstancia.vigilando &&
+              i.salud != SaludInstancia.enReserva));
+
+  /// Antigüedad del dato más fresco disponible.
+  ///
+  /// Lo que hay que enseñar cuando no hay conexión, en lugar de fingir
+  /// que el panel está al día.
+  Duration? get antiguedad {
+    Duration? mejor;
+    for (final i in instancias) {
+      final s = i.silencio;
+      if (s == null) continue;
+      if (mejor == null || s < mejor) mejor = s;
+    }
+    return mejor;
+  }
+
+  /// Si se puede designar esa instancia, y si no, por qué.
+  ///
+  /// Se devuelve el motivo en vez de un simple `false` para que la
+  /// pantalla no tenga que adivinarlo: un botón gris sin explicación es
+  /// tan confuso como uno que falla al pulsarlo.
+  String? motivoNoDesignable(TarjetaInstancia t) {
+    if (!conectado) return 'sin conexión';
+    if (t.salud == SaludInstancia.ilegible) return 'publica algo ilegible';
+    if (t.salud == SaludInstancia.callada) {
+      return 'callada hace ${humano(t.silencio)}';
+    }
+    if (control.designada == t.id) return 'ya está designada';
+    return null;
+  }
+
+  bool designable(TarjetaInstancia t) => motivoNoDesignable(t) == null;
+
+  /// Ninguna se puede designar. Merece decirse: si no, la pantalla
+  /// parecería rota, con todos los botones apagados y sin motivo.
+  bool get ningunaDesignable => !instancias.any(designable);
 
   /// Se designó una máquina y no recogió el encargo.
   bool get relevoSinConfirmar => control.designacionSinRecoger;
@@ -89,7 +140,11 @@ class VistaPanel {
   /// Lo que debe ir en el contador de la pantalla.
   int get alertas {
     final problemas = enjambre?.enjambre.atencion ?? 0;
-    return problemas + calladas.length + (relevoSinConfirmar ? 1 : 0);
+    // Las calladas solo cuentan con conexión: sin ella, su silencio
+    // puede ser el del propio teléfono.
+    return problemas +
+        (conectado ? calladas.length : 0) +
+        (relevoSinConfirmar ? 1 : 0);
   }
 }
 
@@ -100,8 +155,9 @@ class VistaPanel {
 VistaPanel construirPanel(
   List<LecturaInstancia> lecturas,
   Control control,
-  DateTime ahora,
-) {
+  DateTime ahora, {
+  bool conectado = true,
+}) {
   final tarjetas = <TarjetaInstancia>[];
   for (final l in lecturas) {
     if (!l.correcta) {
@@ -141,6 +197,7 @@ VistaPanel construirPanel(
     instancias: tarjetas,
     control: control,
     deQuienLeemos: _mejorFuente(tarjetas),
+    conectado: conectado,
   );
 }
 
@@ -163,6 +220,15 @@ TarjetaInstancia? _mejorFuente(List<TarjetaInstancia> tarjetas) {
   }
   return masFresca;
 }
+
+/// Corrige el reloj del teléfono con el desfase que informa Firebase.
+///
+/// La caducidad del latido se calcula contra la hora local. Un móvil
+/// cinco minutos adelantado daría por caídas máquinas que están
+/// publicando cada cinco, y uno atrasado ocultaría una caída real. El
+/// desfase lo mide el propio SDK contra el servidor.
+DateTime corregirReloj(DateTime local, Duration desfase) =>
+    local.toUtc().add(desfase);
 
 /// Orden en que se muestran las sesiones con problema.
 ///

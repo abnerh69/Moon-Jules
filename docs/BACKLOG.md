@@ -221,6 +221,15 @@ no puede autodesignarse. Dos entregas contradiciéndose. El comando queda
 solo consultando y el botón vive en la app, que es donde estás cuando
 una máquina cae.
 
+### E38 — No mentir sobre por qué no se ve algo *(entrega 26)*
+Cuatro cosas de la misma familia. El botón de designar solo se ofrece
+cuando puede funcionar, con el motivo al lado. Si ninguna sirve, se dice
+—todos los botones apagados y sin explicación parecerían una app rota—.
+Sin conexión, la app avisa y **no atribuye el silencio a las máquinas**:
+el SDK sirve de caché y mostraría latidos rancios como si el enjambre
+hubiera muerto. Y el reloj se corrige con `.info/serverTimeOffset`,
+porque un móvil adelantado daría por caídas máquinas sanas.
+
 ## Siguiente ola
 
 ## Retirado

@@ -244,4 +244,124 @@ void main() {
       expect(resumenMotivo(s), contains('unable to complete'));
     });
   });
+
+  group('sin conexión', () {
+    test('no se acusa a las máquinas de un silencio que puede ser mío', () {
+      // El SDK sirve de caché: sin este dato, la pantalla mostraría
+      // latidos de hace horas y concluiría que las tres murieron cuando
+      // el móvil está en un ascensor.
+      final p = construirPanel(
+        [leer('la-dorada', cuando: rancio)],
+        sinDesignar,
+        ahora,
+        conectado: false,
+      );
+      expect(p.nadieVigila, isFalse);
+    });
+
+    test('con conexión, un silencio largo sí es culpa de la máquina', () {
+      final p = construirPanel(
+          [leer('la-dorada', cuando: rancio)], sinDesignar, ahora);
+      expect(p.nadieVigila, isTrue);
+    });
+
+    test('las calladas no cuentan como alerta sin conexión', () {
+      final p = construirPanel(
+        [leer('viva'), leer('muda', cuando: rancio)],
+        sinDesignar,
+        ahora,
+        conectado: false,
+      );
+      // Solo los 8 problemas del enjambre; el silencio no se atribuye.
+      expect(p.alertas, 8);
+    });
+
+    test('se sabe de cuándo son los datos que se están mostrando', () {
+      final p = construirPanel(
+        [leer('la-dorada', cuando: ahora.subtract(const Duration(minutes: 40)))],
+        sinDesignar,
+        ahora,
+        conectado: false,
+      );
+      expect(p.antiguedad, const Duration(minutes: 40));
+    });
+  });
+
+  group('designar', () {
+    test('una instancia viva y no designada se puede designar', () {
+      final p = construirPanel([leer('la-dorada')], sinDesignar, ahora);
+      expect(p.designable(p.instancias.single), isTrue);
+      expect(p.motivoNoDesignable(p.instancias.single), isNull);
+    });
+
+    test('una callada no, y se dice por qué', () {
+      // Un botón gris sin explicación es tan confuso como uno que falla
+      // al pulsarlo.
+      final p = construirPanel(
+          [leer('sao-paulo', cuando: rancio)], sinDesignar, ahora);
+      expect(p.designable(p.instancias.single), isFalse);
+      expect(p.motivoNoDesignable(p.instancias.single), contains('callada'));
+    });
+
+    test('la ya designada tampoco', () {
+      final p = construirPanel([leer('la-dorada')],
+          Control.desdeJson({'desired': 'la-dorada', 'known': true}), ahora);
+      expect(p.motivoNoDesignable(p.instancias.single), contains('ya está'));
+    });
+
+    test('sin conexión no se puede designar ninguna', () {
+      final p = construirPanel([leer('la-dorada')], sinDesignar, ahora,
+          conectado: false);
+      expect(p.motivoNoDesignable(p.instancias.single), 'sin conexión');
+    });
+
+    test('si ninguna sirve, la pantalla debe poder decirlo', () {
+      // Todos los botones apagados y sin motivo parecería una app rota.
+      final p = construirPanel([
+        leer('a', cuando: rancio),
+        leer('b', cuando: rancio),
+      ], sinDesignar, ahora);
+      expect(p.ningunaDesignable, isTrue);
+    });
+
+    test('una ilegible no se designa', () {
+      final p = construirPanel(
+          [const LecturaInstancia.fallida('rara', 'esquema 99')],
+          sinDesignar, ahora);
+      expect(p.motivoNoDesignable(p.instancias.single), contains('ilegible'));
+    });
+  });
+
+  group('reloj', () {
+    test('se corrige con el desfase del servidor', () {
+      // Un móvil cinco minutos adelantado daría por caídas máquinas que
+      // publican cada cinco.
+      final local = DateTime.utc(2026, 8, 25, 12, 5);
+      expect(corregirReloj(local, const Duration(minutes: -5)),
+          DateTime.utc(2026, 8, 25, 12, 0));
+    });
+
+    test('sin desfase no cambia nada', () {
+      final local = DateTime.utc(2026, 8, 25, 12, 0);
+      expect(corregirReloj(local, Duration.zero), local);
+    });
+
+    test('un reloj adelantado dejaría de fingir caídas', () {
+      final publicado = ahora.subtract(const Duration(minutes: 2));
+      final adelantado = ahora.add(const Duration(minutes: 25));
+      final tarjeta = construirPanel(
+        [leer('la-dorada', cuando: publicado)],
+        sinDesignar,
+        adelantado,
+      ).instancias.single;
+      expect(tarjeta.salud, SaludInstancia.callada, reason: 'sin corregir');
+
+      final corregida = construirPanel(
+        [leer('la-dorada', cuando: publicado)],
+        sinDesignar,
+        corregirReloj(adelantado, const Duration(minutes: -25)),
+      ).instancias.single;
+      expect(corregida.salud, SaludInstancia.vigilando);
+    });
+  });
 }

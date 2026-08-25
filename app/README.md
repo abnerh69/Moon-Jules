@@ -125,9 +125,28 @@ Designar vive aquí y no en la CLI porque las reglas lo reservan al
 arquitecto: **una máquina no puede autodesignarse**. Y porque el momento
 de necesitarlo es justo cuando una máquina cayó y tú estás en otro sitio.
 
-Firebase rechaza designar una instancia cuyo latido haya caducado. El
-botón se deja pulsable a propósito: el mensaje del rechazo explica el
-motivo mejor que un botón gris sin explicación.
+**Solo se ofrece designar a las que están publicando.** Un botón que
+falla al pulsarlo es una acción fallida que la interfaz permitió; el
+motivo va en el subtítulo, para que el botón apagado no quede mudo. Y
+Firebase lo valida además por su cuenta: que la app no lo ofrezca está
+bien, que no pueda aunque tenga un fallo es mejor.
+
+## Sin conexión
+
+El SDK de RTDB sirve de **caché**: sin red sigue entregando el último
+snapshot conocido, con latidos de hace horas. Sin distinguirlo, la
+pantalla acusaría a las tres máquinas de haber muerto a la vez cuando lo
+que pasa es que el móvil está en un ascensor — el mismo engaño que
+motiva el proyecto entero, una capa más arriba.
+
+`.info/connected` lo resuelve: es estado local del SDK, no viaja por la
+red y responde al instante. Sin conexión, la app avisa arriba, dice de
+cuándo son los datos y no atribuye ningún silencio a las máquinas.
+
+El reloj también se corrige. La caducidad del latido se calcula contra
+la hora del teléfono, así que uno cinco minutos adelantado daría por
+caídas máquinas que publican cada cinco. `.info/serverTimeOffset` da la
+diferencia y se aplica antes de comparar.
 
 ## Lo que falta
 
