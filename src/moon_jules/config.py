@@ -163,6 +163,9 @@ class Config:
     #: incremental no ve revivir una sesion ya terminada; esto acota
     #: cuanto puede tardarse en notarlo.
     full_refresh_every: int = 12
+    #: Vida de un comando sin caducidad propia. Una orden vieja
+    #: ejecutada tarde es peor que una orden perdida.
+    command_ttl_s: int = 600
     default_mode: AutonomyMode = AutonomyMode.READ_ONLY
     policy: Policy = field(default_factory=Policy)
     budgets: Budgets = field(default_factory=Budgets)
@@ -329,6 +332,7 @@ def load(path: Path | None = None, *, dotenv: Path | None = None) -> Config:
         max_concurrency=max(1, int(watch.get("max_concurrency", 5))),
         bootstrap_lookback_s=int(watch.get("bootstrap_lookback_s", 86400)),
         full_refresh_every=max(1, int(watch.get("full_refresh_every", 12))),
+        command_ttl_s=int(watch.get("command_ttl_s", 600)),
         default_mode=default_mode,
         policy=base_policy,
         budgets=budgets,

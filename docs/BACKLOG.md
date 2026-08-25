@@ -120,6 +120,19 @@ las instancias escriben bajo una identidad acotada y las reglas se les
 aplican. El token va en cabecera, se renueva solo y no viaja en la URL.
 Guía y reglas en `docs/RTDB.md`.
 
+### E24 — Canal de comandos *(entrega 16)*
+La app ordena acciones concretas: `nudge`, `approve_plan`, `ack`,
+`unack`, `pause`, `resume`, `refresh`. RTDB no es una cola, así que cada
+orden lleva `id` —idempotencia en SQLite— y `expires_at` —una orden
+vieja ejecutada tarde es peor que una perdida—, y solo la instancia
+habilitada obedece. Un comando es mando a distancia, no autonomía: se
+ejecuta aunque haya pausa. Contrato en `docs/SNAPSHOT.md`.
+
+### E25 — Latido verificable por reglas *(entrega 16)*
+`heartbeat_ms` en el snapshot permite que las reglas de RTDB **rechacen**
+designar una instancia caída. Que la app no lo ofrezca está bien; que no
+pueda hacerlo aunque tenga un fallo, es mejor.
+
 ## Siguiente ola
 
 ## Retirado

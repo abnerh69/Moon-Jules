@@ -150,6 +150,11 @@ que nadie lo note hasta que el panel muestre datos absurdos. Si añades
 un campo, sube `SCHEMA` y documéntalo; si quitas o resignificas uno, eso
 es un cambio incompatible y necesita conversación, no un commit.
 
+Un comando de la app se ejecuta **aunque la autonomía esté pausada**:
+los modos gobiernan lo que Moon-Jules decide por su cuenta, no lo que se
+le ordena. Y todo comando necesita `id` y `expires_at`; sin ellos no se
+ejecuta, y eso es deliberado.
+
 `instance.published_at` se reescribe en **cada** ciclo, aunque no haya
 cambiado nada. No lo "optimices" publicando solo ante cambios: ese campo
 es un latido, y su valor está justo en que aparezca cuando no pasa nada.

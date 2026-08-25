@@ -1,9 +1,10 @@
 # Contrato del snapshot
 
 ```meta
-Esquema:  2
-Desde:    Moon-Jules v0.10.0 (entrega 14)
+Esquema:  3
+Desde:    Moon-Jules v0.12.0 (entrega 16)
 Historia: 1 — entrega 13. 2 — añade `control` y `instance.role`.
+          3 — añade `instance.heartbeat_ms` y el canal de comandos.
 Estado:   Estable
 ```
 
@@ -58,6 +59,7 @@ separa.
     "id": "la-dorada",
     "version": "0.10.0",
     "published_at": "2026-08-24T15:04:05Z",
+    "heartbeat_ms": 1787670245000,
     "cycle_interval_s": 300,
     "stale_after_s": 1200,
     "mode": "unblock_only",
@@ -105,7 +107,8 @@ separa.
 |---|---|
 | `id` | Qué máquina publicó. Con tres portátiles, un latido muerto no sirve de nada sin saber cuál calló. |
 | `version` | Versión de Moon-Jules que escribió esto. |
-| `published_at` | El latido. Se reescribe siempre. |
+| `published_at` | El latido, legible. Se reescribe siempre. |
+| `heartbeat_ms` | El mismo instante en milisegundos. Lo usan las reglas de RTDB, que comparan números contra `now`. Gracias a él, Firebase **rechaza** designar una instancia que lleva rato callada. |
 | `cycle_interval_s` | Cada cuánto se espera el siguiente. |
 | `stale_after_s` | Umbral recomendado de caducidad. |
 | `mode` | Modo de autonomía por defecto: `read_only` o `unblock_only`. |
@@ -192,6 +195,76 @@ y lo problemático; las completadas sin novedad no viajan.
 | `nudge_unanswered` | Se le envió el prompt y no respondió. **El canario.** |
 | `nudge_budget_spent` | Se agotaron los intentos y se dejó de insistir. |
 
+## Comandos
+
+El teléfono puede ordenar acciones concretas. **Un comando no es
+autonomía, es mando a distancia**: se ejecuta aunque el source esté en
+`read_only` o la autonomía pausada. Los modos gobiernan lo que
+Moon-Jules decide por su cuenta, no lo que se le ordena.
+
+La app escribe en `{root}/command`:
+
+```json
+{
+  "id": "c-1787670245-a3f",
+  "verb": "nudge",
+  "args": { "session": "12713370538437788130" },
+  "issued_at": "2026-08-24T21:04:05Z",
+  "expires_at": "2026-08-24T21:14:05Z"
+}
+```
+
+La instancia habilitada responde en `{root}/instances/{id}/command_result`:
+
+```json
+{
+  "id": "c-1787670245-a3f",
+  "status": "done",
+  "message": "nudge enviado a Informatica-ASHware/CryptBot-V3",
+  "completed_at": "2026-08-24T21:05:12Z"
+}
+```
+
+**El comando está pendiente mientras `command.id` no coincida con
+`command_result.id`.** Así lo deduce la app, sin campo de estado que
+mantener sincronizado.
+
+| `verb` | `args` | Qué hace |
+|---|---|---|
+| `nudge` | `session` | Envía el prompt de continuación. El que más se usará. |
+| `approve_plan` | `session` | Aprueba un plan pendiente. |
+| `ack` | `session`, `note` | Silencia el veredicto vigente de esa sesión. |
+| `unack` | `session` | Retira el silenciamiento. |
+| `pause` | `scope`, `for`, `reason` | Corta la autonomía. `for` acepta `30m`, `2h`, `1d`. |
+| `resume` | `scope` | La reanuda. |
+| `refresh` | — | Fuerza un ciclo sin esperar. |
+
+| `status` | Qué pasó |
+|---|---|
+| `done` | Ejecutado. |
+| `failed` | Se intentó y falló; `message` dice por qué. |
+| `expired` | Llegó tarde. No se ejecutó. |
+| `rejected` | Verbo desconocido, falta un argumento, o la sesión no está en el último ciclo. |
+
+### Tres reglas que la app debe respetar
+
+**Un `id` único por orden**, y estable si reintentas. La instancia guarda
+en SQLite lo que ya ejecutó: reenviar el mismo `id` republica el acuse
+sin repetir la acción. Reenviar con `id` nuevo **sí** vuelve a actuar.
+
+**Siempre `expires_at`.** Sin caducidad conocida, la orden se descarta:
+no poder razonar sobre su frescura basta para no ejecutarla. Un
+`nudge` emitido mientras las tres máquinas dormían no debe ejecutarse
+seis horas después.
+
+**Un comando a la vez.** El nodo es único; escribir otro sobrescribe el
+anterior. La app debería esperar al acuse antes de permitir el
+siguiente.
+
+Los verbos que cruzan la NO list no existen y nunca existirán por aquí:
+crear sesiones o asignar tareas es trabajo de la GitHub Action, y
+archivar o borrar es escritura sobre el workspace del arquitecto.
+
 ## `decisions`
 
 Copia de seguridad de lo que decidió el arquitecto: triajes, pausas y los
@@ -209,5 +282,6 @@ No hay canal de comandos. La app **lee**; no nudgea, no aprueba planes,
 no silencia. Abrir esa vía trae autenticación, idempotencia y órdenes que
 pueden ejecutarse dos veces, y no cabe en la primera versión.
 
-El teléfono sí escribe una cosa, y solo una: `control/desired`. Ese es
-el alcance entero del canal de escritura, y conviene que siga siéndolo.
+El teléfono escribe exactamente dos nodos: `control/desired` y
+`command`. Nada más. Y las reglas de seguridad lo imponen: no puede
+falsificar una reclamación ni escribir en el snapshot de una instancia.

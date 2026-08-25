@@ -23,6 +23,7 @@ from pathlib import Path
 
 from . import __version__
 from .client import JulesClient
+from .commands import Command, ejecutar
 from .config import CONFIG_PATH, Config, load
 from .detector import (
     Action,
@@ -589,6 +590,55 @@ def crear_sink(cfg: Config) -> Sink | None:
     raise ConfigError(f"publish.target desconocido: {destino!r}")
 
 
+async def atender_comando(
+    cfg: Config,
+    sink: Sink | None,
+    client: JulesClient,
+    store: object,
+    report: Report,
+) -> bool:
+    """Ejecuta el comando pendiente, si lo hay. Devuelve si toca refrescar.
+
+    El orden importa y no es negociable: se comprueba la idempotencia
+    **antes** de actuar y se anota el resultado en SQLite **antes** de
+    publicarlo. Si el proceso muere entre una cosa y otra, al reiniciar
+    republica el acuse guardado en vez de volver a actuar.
+    """
+    if not isinstance(sink, RtdbSink):
+        return False
+    crudo = await sink.read_command()
+    cmd = Command.from_rtdb(crudo, ttl_s=cfg.command_ttl_s)
+    if cmd is None:
+        return False
+
+    yo = instance_id(cfg.publish.instance_id)
+    previo = store.command_result(cmd.id)
+    if previo is not None:
+        # Ya ejecutado: solo puede faltar el acuse.
+        await sink.publish_result(yo, previo)
+        return False
+
+    ahora = now()
+    log.info("comando %s: %s %s", cmd.id, cmd.verb, cmd.args or "")
+    resultado = await ejecutar(
+        cmd,
+        client=client,
+        store=store,
+        report=report,
+        ahora=ahora,
+        prompt=cfg.policy.nudge_prompt,
+    )
+    store.record_command(
+        cmd.id, cmd.verb, resultado.status, resultado.message,
+        resultado.completed_at, ahora,
+    )
+    await sink.publish_result(yo, resultado.to_rtdb())
+    print(f"[{ahora:%H:%M:%S}] comando {cmd.verb}: {resultado.status} "
+          f"— {resultado.message}")
+    log.info("comando %s -> %s: %s", cmd.id, resultado.status, resultado.message)
+    return resultado.refrescar
+
+
 async def leer_control(cfg: Config, sink: Sink | None) -> tuple[Control, str]:
     """Consulta quien debe vigilar y deduce el papel de esta instancia.
 
@@ -917,6 +967,16 @@ async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
                                     await publicar(cfg, report, store, sink, control, rol)
                                 except MoonJulesError as exc:
                                     log.error("no se pudo publicar: %s", exc)
+                            if rol == "active":
+                                # Solo la habilitada obedece: asi un relevo a
+                                # media orden no la recoge otra maquina.
+                                try:
+                                    if await atender_comando(
+                                        cfg, sink, c, store, report
+                                    ):
+                                        continue  # refresh: sin esperar
+                                except MoonJulesError as exc:
+                                    log.error("no se pudo atender el comando: %s", exc)
                         except MoonJulesError as exc:
                             log.error("error de ciclo: %s", exc)
                             print(f"[{now():%H:%M:%S}] error de ciclo: {exc}", file=sys.stderr)

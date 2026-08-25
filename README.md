@@ -141,7 +141,12 @@ Jules.
 
 Designar es **proponer**: la instancia elegida confirma escribiendo su
 reclamación. Si designas una máquina dormida, nadie recoge el encargo y
-eso se ve. Lo normal es hacerlo desde la app.
+eso se ve; y con las reglas de `docs/RTDB.md`, Firebase directamente lo
+rechaza. Lo normal es hacerlo desde la app.
+
+Desde la app también se pueden ordenar acciones concretas —desatascar
+una sesión, silenciar, pausar— con caducidad e idempotencia. Contrato en
+`docs/SNAPSHOT.md`.
 
 ### Historial
 
@@ -178,7 +183,7 @@ cierra issues, ni mergea PRs, ni cambia labels, ni archiva sesiones. La lista co
 y `watch`, con detector calibrado, notificaciones nativas, logging con
 redacción de credenciales, carga desde `.env`, lock de instancia única,
 triaje de hallazgos, historial local, interruptor de autonomía y
-recalibración del umbral. 221
+recalibración del umbral. 244
 tests, incluido un barrido de secretos sobre todo el árbol.
 
 `moon-jules doctor` mide la latencia real de tu API y proyecta el coste

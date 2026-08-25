@@ -20,7 +20,7 @@ from moon_jules.cli import SIN_RAZON, Monitor, Progress
 from moon_jules.config import Budgets, Config, SourceConfig
 from moon_jules.detector import Policy
 from moon_jules.models import Activity, AutonomyMode, Session, SessionState
-from moon_jules.store import Store
+from moon_jules.store import SCHEMA_VERSION, Store
 
 from .fakes import FakeJules
 
@@ -258,7 +258,7 @@ def test_la_migracion_desde_v4_conserva_los_datos(tmp_path):
             "SELECT value FROM meta WHERE key='schema_version'"
         ).fetchone()["value"]
         filas = store.db.execute("SELECT COUNT(*) c FROM sessions").fetchone()["c"]
-        assert version == "6"
+        assert version == str(SCHEMA_VERSION)
         assert filas == 1
         assert store.failure_reasons() == {}
 
@@ -291,7 +291,7 @@ def test_una_base_nueva_no_intenta_migrar(tmp_path):
     with Store(tmp_path / "nueva.db") as store:
         assert store.db.execute(
             "SELECT value FROM meta WHERE key='schema_version'"
-        ).fetchone()["value"] == "6"
+        ).fetchone()["value"] == str(SCHEMA_VERSION)
 
 
 def test_abrir_dos_veces_es_idempotente(tmp_path):

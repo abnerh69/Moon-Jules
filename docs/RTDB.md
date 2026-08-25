@@ -100,7 +100,7 @@ moon-jules relay         # debe leer el control
 
       "control": {
         "desired": {
-          ".write": "auth.uid === 'UID_ARQUITECTO'",
+          ".write": "auth.uid === 'UID_ARQUITECTO' && (newData.val() === null || root.child('moonjules/instances').child(newData.val()).child('snapshot/instance/heartbeat_ms').val() > now - 1200000)",
           ".validate": "newData.isString() || newData.val() === null"
         },
         "claimed_by": {
@@ -109,11 +109,36 @@ moon-jules relay         # debe leer el control
         "claimed_at": {
           ".write": "auth.uid === 'moonjules-writer'"
         }
+      },
+
+      "command": {
+        ".write": "auth.uid === 'UID_ARQUITECTO'",
+        ".validate": "newData.val() === null || newData.hasChildren(['id', 'verb', 'issued_at', 'expires_at'])"
       }
     }
   }
 }
 ```
+
+### La regla que impide designar una máquina muerta
+
+Esa condición larga en `control/desired` es la pieza importante:
+
+```
+root.child('moonjules/instances').child(newData.val())
+    .child('snapshot/instance/heartbeat_ms').val() > now - 1200000
+```
+
+Antes de aceptar la designación, Firebase mira el latido de esa
+instancia y rechaza la escritura si lleva más de veinte minutos callada.
+Que la app no ofrezca designar a una máquina caída está bien; que **no
+pueda hacerlo** aunque tenga un fallo, o aunque alguien toque los datos a
+mano, es mejor. Por eso el snapshot publica `heartbeat_ms` además de
+`published_at`: las reglas comparan números contra `now`, no cadenas
+ISO.
+
+Ajusta los 1.200.000 ms si cambias `poll_interval_s`: conviene que sea
+el mismo `stale_after_s` que viaja en el snapshot.
 
 Esto impone el contrato en la base de datos, no en el código:
 

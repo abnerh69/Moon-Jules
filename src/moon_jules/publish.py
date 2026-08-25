@@ -46,7 +46,7 @@ log = get_logger("publish")
 #: Versión del esquema. Se sube al añadir campos; se sube de mayor al
 #: quitar o cambiar el significado de uno. La app debe rechazar lo que
 #: no entienda en vez de interpretarlo a medias.
-SCHEMA = 2
+SCHEMA = 3
 
 #: Cuántas sesiones caben en el snapshot. Con el tope de 15 concurrentes
 #: del plan, 40 deja sitio de sobra para lo activo más lo que requiere
@@ -157,6 +157,11 @@ def construir(
             "id": instancia,
             "version": __version__,
             "published_at": _iso(ahora),
+            # El mismo instante en milisegundos. Las reglas de RTDB
+            # comparan numeros contra `now`, no cadenas ISO: sin este
+            # campo no se puede impedir por regla que la app designe a
+            # una maquina que lleva horas callada.
+            "heartbeat_ms": int(ahora.timestamp() * 1000),
             "cycle_interval_s": intervalo_s,
             # El criterio de caducidad viaja con el dato: cuatro ciclos,
             # nunca menos de 20 minutos. Así la app no lo codifica.
@@ -332,6 +337,17 @@ class RtdbSink(Sink):
     async def set_desired(self, instancia: str | None) -> None:
         """Designa quien debe vigilar. Lo normal es que lo haga la app."""
         await self._put("control/desired", instancia)
+
+    async def read_command(self) -> Any:
+        """Lee el comando pendiente. Nunca levanta: sin comando, None."""
+        try:
+            return await self._get("command")
+        except MoonJulesError as exc:
+            log.warning("no se pudo leer el comando: %s", exc)
+            return None
+
+    async def publish_result(self, instancia: str, resultado: dict) -> None:
+        await self._put(f"instances/{instancia}/command_result", resultado)
 
     async def publish_decisions(self, instancia: str, decisiones: dict) -> None:
         await self._put(f"instances/{instancia}/decisions", decisiones)

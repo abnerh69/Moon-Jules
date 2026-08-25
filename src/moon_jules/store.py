@@ -14,7 +14,7 @@ from pathlib import Path
 from .detector import NudgeRecord
 from .models import Session, SessionState
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 #: Clave de la pausa que afecta a todos los sources.
 GLOBAL_SCOPE = "*"
@@ -71,6 +71,14 @@ CREATE TABLE IF NOT EXISTS pauses (
     paused_at TEXT NOT NULL,
     until     TEXT,
     reason    TEXT
+);
+CREATE TABLE IF NOT EXISTS commands (
+    id           TEXT PRIMARY KEY,
+    verb         TEXT NOT NULL,
+    received_at  TEXT NOT NULL,
+    status       TEXT NOT NULL,
+    message      TEXT,
+    completed_at TEXT
 );
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
@@ -321,6 +329,41 @@ class Store:
             "WHERE id = (SELECT id FROM nudges WHERE session = ? "
             "            ORDER BY sent_at DESC LIMIT 1)",
             (outcome, _iso(now), name),
+        )
+
+    # ---------- comandos: idempotencia por identificador ----------
+
+    def command_result(self, cmd_id: str) -> dict | None:
+        """Resultado de un comando ya ejecutado, si lo hubo.
+
+        RTDB no es una cola: si la instancia actua y muere antes de
+        publicar el acuse, al reiniciar volveria a actuar. Guardar el
+        resultado por `id` permite reejecutar la *publicacion* sin
+        reejecutar la *accion*.
+        """
+        row = self.db.execute(
+            "SELECT id, status, message, completed_at FROM commands WHERE id = ?",
+            (cmd_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def record_command(
+        self, cmd_id: str, verb: str, status: str, message: str,
+        completed_at: str, now: datetime,
+    ) -> None:
+        self.db.execute(
+            "INSERT INTO commands(id, verb, received_at, status, message, completed_at) "
+            "VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING",
+            (cmd_id, verb, _iso(now), status, message, completed_at),
+        )
+
+    def command_log(self, limit: int = 20) -> list[sqlite3.Row]:
+        return list(
+            self.db.execute(
+                "SELECT id, verb, received_at, status, message FROM commands "
+                "ORDER BY received_at DESC LIMIT ?",
+                (limit,),
+            )
         )
 
     # ---------- pausa de autonomia ----------

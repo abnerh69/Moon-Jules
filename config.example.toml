@@ -16,6 +16,7 @@ poll_interval_s = 300      # ADR-001
 max_concurrency = 5        # peticiones simultaneas; limite autoimpuesto
 bootstrap_lookback_s = 86400  # ventana de la primera consulta por sesion
 full_refresh_every = 12       # cada cuantos ciclos se repagina todo
+command_ttl_s      = 600      # vida de un comando de la app sin caducidad propia
 stall_after_s   = 900      # ADR-002: N = 15 min, calibrado en el Spike 01
 nudge_verify_s  = 600      # canario del prompt magico
 default_mode    = "read_only"   # read_only | unblock_only. ADR-005.
