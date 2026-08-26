@@ -31,6 +31,24 @@ class Rutas {
   String dispositivo(String token) => '$raiz/devices/$token';
 }
 
+/// Resultado de registrar el teléfono para recibir avisos.
+///
+/// Se devuelve el motivo del fallo en vez de un `null` mudo: la primera
+/// versión decía «comprueba el permiso de notificaciones» pasara lo que
+/// pasara, y eso mandó a revisar el sitio equivocado cuando el problema
+/// estaba en las reglas de RTDB.
+class RegistroAvisos {
+  const RegistroAvisos.ok(String this.token) : error = null;
+
+  const RegistroAvisos.fallido(String this.error) : token = null;
+
+  final String? token;
+  final String? error;
+
+  bool get activo => token != null;
+}
+
+
 class RepositorioMoonJules {
   RepositorioMoonJules({
     FirebaseDatabase? db,
@@ -136,12 +154,37 @@ class RepositorioMoonJules {
   /// Se llama en cada arranque: el token de FCM rota, y uno viejo deja
   /// de recibir sin avisar. Moon-Jules retira solo los que FCM declara
   /// muertos.
-  Future<String?> registrarDispositivo() async {
-    await _messaging.requestPermission();
-    final token = await _messaging.getToken();
-    if (token == null) return null;
-    await _db.ref(rutas.dispositivo(token)).set(true);
-    return token;
+  Future<RegistroAvisos> registrarDispositivo() async {
+    final permiso = await _messaging.requestPermission();
+    final concedido =
+        permiso.authorizationStatus == AuthorizationStatus.authorized ||
+            permiso.authorizationStatus == AuthorizationStatus.provisional;
+    if (!concedido) {
+      return RegistroAvisos.fallido(
+        'El sistema no concedió permiso para notificar '
+        '(${permiso.authorizationStatus.name}).',
+      );
+    }
+    String? token;
+    try {
+      token = await _messaging.getToken();
+    } on Object catch (e) {
+      // El motivo real, no una conjetura. Perder esta cadena costó una
+      // noche de buscar en el sitio equivocado.
+      return RegistroAvisos.fallido('No se pudo obtener el token: $e');
+    }
+    if (token == null) {
+      return RegistroAvisos.fallido(
+        'Sin token de FCM. Suele faltar google-services.json o el '
+        'registro de la app Android en el proyecto de Firebase.',
+      );
+    }
+    try {
+      await _db.ref(rutas.dispositivo(token)).set(true);
+    } on Object catch (e) {
+      return RegistroAvisos.fallido('No se pudo registrar en RTDB: $e');
+    }
+    return RegistroAvisos.ok(token);
   }
 
   /// Los tokens rotan; hay que seguir el cambio o se dejan de recibir.

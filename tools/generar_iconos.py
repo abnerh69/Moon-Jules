@@ -99,6 +99,35 @@ def dibujar() -> Image.Image:
     return img
 
 
+def notificacion() -> Image.Image:
+    """Icono monocromo para la barra de notificaciones.
+
+    Android **ignora el color** del icono pequeno: lo pinta como una
+    silueta blanca a partir del canal alfa. Un icono a color se ve como
+    un cuadrado blanco relleno, que es lo que ocurre cuando no se
+    declara uno propio y el sistema recurre al de la app.
+    """
+    lado = 192
+    img = Image.new("RGBA", (lado, lado), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    c, r = lado // 2, int(lado * 0.34)
+    d.ellipse([c - r, c - r, c + r, c + r], fill=(255, 255, 255, 255))
+    recorte = Image.new("L", (lado, lado), 0)
+    dx = int(r * 0.55)
+    ImageDraw.Draw(recorte).ellipse(
+        [c - r + dx, c - r - int(lado * 0.06), c + r + dx, c + r - int(lado * 0.06)],
+        fill=255,
+    )
+    img.putalpha(
+        Image.composite(Image.new("L", (lado, lado), 0),
+                        img.getchannel("A"), recorte)
+    )
+    return img
+
+
+DRAWABLES = {"mdpi": 24, "hdpi": 36, "xhdpi": 48, "xxhdpi": 72, "xxxhdpi": 96}
+
+
 def main() -> int:
     destino = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(
         "app/android/app/src/main/res"
@@ -111,6 +140,16 @@ def main() -> int:
             carpeta / "ic_launcher.png"
         )
         print(f"  {carpeta/'ic_launcher.png'} ({lado}px)")
+    # Icono de la barra de notificaciones, monocromo.
+    silueta = notificacion()
+    for nombre, lado in DRAWABLES.items():
+        carpeta = destino / f"drawable-{nombre}"
+        carpeta.mkdir(parents=True, exist_ok=True)
+        silueta.resize((lado, lado), Image.LANCZOS).save(
+            carpeta / "ic_notificacion.png"
+        )
+    print(f"  ic_notificacion.png en {len(DRAWABLES)} densidades")
+
     # Copia grande, por si hace falta para el escritorio o un README.
     grande = Path(sys.argv[2]) if len(sys.argv) > 2 else Path("app/icono.png")
     grande.parent.mkdir(parents=True, exist_ok=True)

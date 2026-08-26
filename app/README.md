@@ -174,14 +174,32 @@ que es justo el modo de fallo que este proyecto existe para no repetir.
 Moon-Jules envía por FCM con la misma cuenta de servicio que publica el
 snapshot, así que basta con `fcm = true` en `[notify]` del lado del Mac.
 
+### El canal de notificaciones
+
+Desde Android 8 **toda notificación necesita un canal**, y con la app
+cerrada quien la muestra es el SDK nativo de Firebase, no el código
+Dart. Si el canal no existe, muchos dispositivos —MIUI entre ellos— lo
+**descartan en silencio**: FCM informa de entrega correcta y en el
+teléfono no aparece nada. Costó una noche encontrarlo.
+
+Hacen falta las dos cosas, y con una sola no basta: declarar el
+identificador en el manifiesto (lo hace `apply-29.sh`) y crear el canal
+al arrancar (`data/canal_avisos.dart`).
+
+El icono pequeño también se declara. Android **ignora su color** y lo
+pinta como silueta a partir del alfa; sin uno monocromo propio, el icono
+de la app se ve como un cuadrado blanco.
+
 Dos cosas que conviene saber. Con la app **en primer plano** el sistema
 no muestra notificación: estás mirando la pantalla, así que el aviso
 sería redundante. Y la alerta de instancia caída **no llega por push**
 —la máquina que se cayó no puede enviarla—; esa la calcula la propia app
 comparando `heartbeat_ms` con `stale_after_s`.
 
-Si el registro falla, la pantalla lo dice arriba: sin push, solo verías
-las alertas con la app abierta.
+La pantalla dice siempre cómo está el push: activo, o el **motivo real**
+del fallo. La primera versión mostraba «comprueba el permiso de
+notificaciones» pasara lo que pasara, y eso mandó a revisar el sitio
+equivocado cuando el problema estaba en las reglas de RTDB.
 
 ## Lo que falta
 

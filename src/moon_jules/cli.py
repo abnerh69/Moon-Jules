@@ -569,10 +569,17 @@ async def cmd_ack(cfg: Config, args: argparse.Namespace) -> int:
             if not filas:
                 print("nada silenciado.")
                 return 0
+            # Con varias del mismo repositorio, la lista sin id ni
+            # titulo no sirve para operar: no se sabe cual es cual.
             for r in filas:
                 repo = (r["source"] or "").removeprefix("sources/").removeprefix("github/")
+                ident = r["session"].removeprefix("sessions/")
+                print(f"{ident:<22} {r['verdict']:<18} {repo}")
+                titulo = (r["title"] or "").strip()
                 nota = f"  ({r['note']})" if r["note"] else ""
-                print(f"{r['verdict']:<20} {repo:<40} {r['acked_at'][:10]}{nota}")
+                print(f"{'':<22} {r['acked_at'][:10]}  {titulo[:60]}{nota}")
+            print(f"\n{len(filas)} silenciadas. Para revertir: "
+                  f"moon-jules unack <id>")
             return 0
 
         if args.session:

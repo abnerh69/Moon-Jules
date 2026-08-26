@@ -33,3 +33,4 @@ app/**/*.keystore
 # Credenciales de Firebase del lado del cliente: no van al repositorio
 app/android/app/google-services.json
 app/lib/firebase_options.dart
+/docs/realrules.json

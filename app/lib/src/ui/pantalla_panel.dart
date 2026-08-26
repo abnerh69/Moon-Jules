@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../model/panel.dart';
 import '../model/snapshot.dart';
+import '../data/repositorio.dart';
 import '../providers.dart';
 import 'detalle_sesion.dart';
 import 'detalle_relevo.dart';
@@ -67,14 +68,15 @@ class _Contenido extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 24),
       children: [
         // Sin avisos push, la app solo alerta cuando está abierta, que
-        // es donde se estaba antes de que existiera. Merece decirse.
-        if (avisos.hasError || avisos.valueOrNull == null && avisos.hasValue)
-          const _Aviso(
+        // es donde se estaba antes de que existiera. Y el motivo se
+        // muestra tal cual: una conjetura manda a revisar el sitio
+        // equivocado, y eso ya costó una noche.
+        if (avisos.valueOrNull?.activo == false || avisos.hasError)
+          _Aviso(
             icono: Icons.notifications_off,
             titulo: 'Sin avisos en segundo plano',
-            detalle: 'No se pudo registrar este teléfono. Solo verás las '
-                'alertas con la app abierta. Comprueba el permiso de '
-                'notificaciones.',
+            detalle: '${avisos.valueOrNull?.error ?? avisos.error}\n\n'
+                'Solo verás las alertas con la app abierta.',
           ),
         // Sin conexión, lo primero es decir que el problema es de aquí.
         // Si no, los latidos rancios de la caché harían acusar a las
@@ -108,6 +110,7 @@ class _Contenido extends StatelessWidget {
         for (final i in vista.instancias) _FilaInstancia(tarjeta: i),
         const Divider(height: 24),
         if (vista.enjambre != null) _Resumen(enjambre: vista.enjambre!.enjambre),
+        _EstadoAvisos(avisos: avisos),
         if (grupos.isEmpty)
           const _Aviso(
             icono: Icons.check_circle_outline,
@@ -196,6 +199,33 @@ class _Resumen extends StatelessWidget {
               'Autonomía pausada: ${enjambre.pausas.values.join(", ")}',
               style: const TextStyle(color: Colors.orange),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Estado del push, se vea bien o mal.
+///
+/// Que funcione también es información: sin esta línea, la única forma
+/// de saber si las alertas llegarían era esperar a que pasara algo.
+class _EstadoAvisos extends StatelessWidget {
+  const _EstadoAvisos({required this.avisos});
+
+  final AsyncValue<RegistroAvisos> avisos;
+
+  @override
+  Widget build(BuildContext context) {
+    final activo = avisos.valueOrNull?.activo ?? false;
+    if (!activo) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+      child: Row(
+        children: [
+          const Icon(Icons.notifications_active, size: 14, color: Colors.green),
+          const SizedBox(width: 6),
+          Text('Avisos en segundo plano activos',
+              style: Theme.of(context).textTheme.bodySmall),
         ],
       ),
     );

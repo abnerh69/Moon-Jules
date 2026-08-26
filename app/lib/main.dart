@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'firebase_options.dart';
 import 'src/acceso_notifier.dart';
+import 'src/data/canal_avisos.dart';
 import 'src/ui/pantalla_acceso.dart';
 import 'src/ui/pantalla_panel.dart';
 
@@ -15,6 +16,9 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  // Antes de nada: sin canal, Android descarta en silencio lo que
+  // llegue con la app cerrada, y FCM informa de entrega correcta.
+  await crearCanalAvisos();
   runApp(const ProviderScope(child: MoonJulesApp()));
 }
 

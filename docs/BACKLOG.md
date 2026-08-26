@@ -246,6 +246,18 @@ que **desbloquea** la contraseña guardada en vez de sustituirla. Una
 marca de acceso en el futuro se trata como vencida: sin eso, atrasar el
 reloj del dispositivo abriría la ventana para siempre.
 
+### E41 — El canal que faltaba *(entrega 29)*
+Las notificaciones se enviaban, FCM las aceptaba y el teléfono las
+descartaba en silencio: faltaba el canal de Android. Se declara en el
+manifiesto y se crea al arrancar; con una sola de las dos no basta.
+Incluye icono monocromo para la barra, que Android pinta como silueta.
+
+Y lo que hizo que costara una noche: la app mostraba una conjetura
+—«comprueba el permiso»— en vez del error real, `ack --list` no decía
+qué sesión era cuál, y el log decía «1 notificación enviada» sin
+mencionar a cuántos dispositivos. Las tres cosas eran información que el
+sistema tenía y no enseñaba.
+
 ## Siguiente ola
 
 ## Retirado

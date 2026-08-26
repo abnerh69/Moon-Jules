@@ -81,10 +81,10 @@ final panelProvider = Provider<AsyncValue<VistaPanel>>((ref) {
 /// inicial y los siguientes son los tokens renovados. **Los tokens
 /// rotan**, y uno viejo deja de recibir sin avisar de nada — que es
 /// justo el modo de fallo que esta app existe para no repetir.
-final avisosProvider = StreamProvider<String?>((ref) async* {
+final avisosProvider = StreamProvider<RegistroAvisos>((ref) async* {
   final repo = ref.watch(repositorioProvider);
   yield await repo.registrarDispositivo();
-  yield* repo.tokensRenovados();
+  yield* repo.tokensRenovados().map(RegistroAvisos.ok);
 });
 
 /// Sesión concreta, para la ventana de detalle.

@@ -90,6 +90,12 @@ class FcmBackend(Backend):
                     entregados += 1
             except MoonJulesError as exc:
                 log.warning("fallo al enviar a un dispositivo: %s", exc)
+        # Cuantos, no solo si alguno: un "1 notificacion enviada" que no
+        # dice a cuantos aparatos llego hizo buscar el fallo en el sitio
+        # equivocado durante una noche entera.
+        log.info(
+            "push entregado a %d de %d dispositivo(s)", entregados, len(tokens)
+        )
         return entregados > 0
 
     def _enviar(self, token: str, title: str, body: str) -> bool:

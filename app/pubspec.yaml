@@ -18,6 +18,9 @@ dependencies:
   # permitiria atrasar la marca de acceso a mano.
   flutter_secure_storage: ^9.2.2
   local_auth: ^2.3.0
+  # Solo para crear el canal: sin el, Android descarta en silencio las
+  # notificaciones que llegan con la app cerrada.
+  flutter_local_notifications: ^18.0.1
 
 flutter:
   # Sin esto los iconos de Material salen como cuadraditos vacios.
