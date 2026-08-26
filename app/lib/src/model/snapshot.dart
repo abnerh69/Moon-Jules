@@ -335,6 +335,10 @@ class Snapshot {
   List<SesionVista> get requierenAtencion =>
       sesiones.where((s) => s.requiereAtencion).toList(growable: false);
 
+  /// Problemas ya triados. Siguen mal; solo se dieron por vistos.
+  List<SesionVista> get silenciadas =>
+      sesiones.where((s) => s.silenciada).toList(growable: false);
+
   List<SesionVista> get vivas =>
       sesiones.where((s) => s.estaViva).toList(growable: false);
 

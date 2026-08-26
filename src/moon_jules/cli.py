@@ -611,14 +611,18 @@ async def cmd_ack(cfg: Config, args: argparse.Namespace) -> int:
         corte = datetime.fromisoformat(args.stale_before).replace(tzinfo=UTC)
         async with JulesClient(cfg.api_key, base_url=cfg.base_url) as c:
             report = await Monitor(c, cfg, store).cycle(execute=False)
-        # Se mira `updateTime` y, si no lo hay, `createTime`. Filtrar
-        # solo por el primero dejaba fuera a las sesiones FAILED, que
-        # son la mayor parte de la deuda: su reloj esta congelado, asi
-        # que no tienen actividad reciente que comparar. Una sesion
-        # abierta hace meses es deuda vieja aunque no se sepa cuando
-        # dejo de moverse.
+        # Se mira `createTime`, no `updateTime`.
+        #
+        # "Deuda vieja" significa una sesion que empezo hace mucho, no
+        # una que el API no ha tocado ultimamente. Y `updateTime` no
+        # mide lo segundo de forma fiable: el API devuelve fechas
+        # recientes para sesiones fallidas en mayo, asi que filtrar por
+        # el las daba por actuales y las dejaba fuera del corte.
+        #
+        # `createTime` es inmutable y responde a la pregunta correcta:
+        # ¿de cuando es este trabajo?
         def _cuando(f: Finding) -> datetime | None:
-            return f.session.update_time or f.session.create_time
+            return f.session.create_time
 
         candidatas = [
             f

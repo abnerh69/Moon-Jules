@@ -64,6 +64,7 @@ class _Contenido extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final grupos = agruparPorRepo(vista.sesiones);
+    final silenciadas = vista.enjambre?.silenciadas ?? const [];
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
@@ -127,6 +128,10 @@ class _Contenido extends StatelessWidget {
           ),
           for (final s in entrada.value) _FilaSesion(sesion: s),
         ],
+        // Lo silenciado sigue estando mal, pero ya se vio. Va al final
+        // y plegado: mezclarlo con lo urgente, idéntico y en rojo,
+        // vaciaba de significado el color.
+        if (silenciadas.isNotEmpty) _Silenciadas(sesiones: silenciadas),
       ],
     );
   }
@@ -209,6 +214,26 @@ class _Resumen extends StatelessWidget {
 ///
 /// Que funcione también es información: sin esta línea, la única forma
 /// de saber si las alertas llegarían era esperar a que pasara algo.
+/// Lo ya triado, plegado al final de la lista.
+class _Silenciadas extends StatelessWidget {
+  const _Silenciadas({required this.sesiones});
+
+  final List<SesionVista> sesiones;
+
+  @override
+  Widget build(BuildContext context) {
+    return ExpansionTile(
+      leading: const Icon(Icons.notifications_off, size: 20),
+      title: Text('${sesiones.length} silenciadas'),
+      subtitle: const Text('Siguen mal, pero ya se dieron por vistas'),
+      children: [
+        for (final s in ordenarPorUrgencia(sesiones))
+          _FilaSesion(sesion: s, atenuada: true),
+      ],
+    );
+  }
+}
+
 class _EstadoAvisos extends StatelessWidget {
   const _EstadoAvisos({required this.avisos});
 
@@ -233,9 +258,12 @@ class _EstadoAvisos extends StatelessWidget {
 }
 
 class _FilaSesion extends StatelessWidget {
-  const _FilaSesion({required this.sesion});
+  const _FilaSesion({required this.sesion, this.atenuada = false});
 
   final SesionVista sesion;
+
+  /// Las silenciadas se pintan apagadas: el rojo debe significar algo.
+  final bool atenuada;
 
   @override
   Widget build(BuildContext context) {
@@ -245,7 +273,9 @@ class _FilaSesion extends StatelessWidget {
       visualDensity: VisualDensity.compact,
       leading: Icon(
         sesion.veredicto.esCanario ? Icons.warning_amber : Icons.error_outline,
-        color: sesion.veredicto.esCanario ? Colors.amber : Colors.redAccent,
+        color: atenuada
+            ? Theme.of(context).disabledColor
+            : (sesion.veredicto.esCanario ? Colors.amber : Colors.redAccent),
       ),
       // Una linea. Con nueve entradas, un titulo de dos empuja el motivo
       // fuera de la pantalla y obliga a desplazarse para leer poco.

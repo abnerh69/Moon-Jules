@@ -305,6 +305,18 @@ o se acumulan y nunca se habían ejercitado. Incluye el arreglo de
 `ack --stale-before`, que filtraba por `updateTime` y dejaba fuera a las
 sesiones `FAILED`, que son la mayor parte de la deuda: silenció 3 de 9.
 
+### E47 — La antigüedad se mide por `createTime` *(entrega 36)*
+Segundo intento sobre `ack --stale-before`. El primero cayó en
+`update_time or create_time` y seguía fallando: el API devuelve
+`updateTime` de hoy para sesiones fallidas en mayo, así que las daba por
+actuales. «Deuda vieja» significa que el trabajo empezó hace mucho, y
+eso lo responde `createTime`, que además es inmutable. Corregir el
+síntoma sin revisar si el dato era el correcto costó una entrega de más.
+
+Incluye en la app la sección plegada de sesiones silenciadas: pintarlas
+idénticas y en rojo junto a un problema real vaciaba de significado el
+color.
+
 ## Siguiente ola
 
 ## Retirado

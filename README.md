@@ -77,6 +77,10 @@ moon-jules unack <session-id>                   # devolverlo al radar
 moon-jules status --all                         # incluir lo silenciado
 ```
 
+`--stale-before` mide cuándo **empezó** la sesión, no cuándo se tocó por
+última vez: el API devuelve fechas recientes para sesiones muertas hace
+meses.
+
 Silenciar no arregla nada: saca el hallazgo del radar. Se silencia el par
 (sesión, veredicto), así que **si el veredicto cambia, reaparece**: una
 sesión silenciada como `paused_stale` que pase a `failed` vuelve a
@@ -237,7 +241,7 @@ Pendiente: vigilancia del contrato del API y verificación de
 
 `app/` contiene el panel que consume lo publicado. Su capa de datos y su
 lógica de presentación son Dart puro y se prueban sin emulador: `cd app
-&& flutter test` (109 tests). Ver `app/README.md`.
+&& flutter test` (112 tests). Ver `app/README.md`.
 
 ## Documentación
 

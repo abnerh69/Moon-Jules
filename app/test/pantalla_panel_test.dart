@@ -259,4 +259,40 @@ void main() {
       expect(find.textContaining('permiso denegado'), findsOneWidget);
     });
   });
+
+  group('lo silenciado', () {
+    List<Object?> conSilenciada() => [
+          fallidaReal,
+          {...fallidaReal, 'id': 'vieja', 'acked': true,
+           'needs_attention': false, 'title': 'deuda de mayo'},
+        ];
+
+    testWidgets('va plegado al final, no mezclado con lo urgente',
+        (tester) async {
+      // Pintarlo idéntico y en rojo junto a un problema real vacía de
+      // significado el color.
+      await montar(tester, instancias: [
+        instancia('la-dorada', sesiones: conSilenciada()),
+      ]);
+      expect(find.text('1 silenciadas'), findsOneWidget);
+      expect(find.text('deuda de mayo'), findsNothing);
+    });
+
+    testWidgets('se puede desplegar para verlo', (tester) async {
+      await montar(tester, instancias: [
+        instancia('la-dorada', sesiones: conSilenciada()),
+      ]);
+      await tester.tap(find.text('1 silenciadas'));
+      await tester.pumpAndSettle();
+      expect(find.text('deuda de mayo'), findsOneWidget);
+    });
+
+    testWidgets('sin nada silenciado no aparece la sección', (tester) async {
+      // Se busca el subtítulo, que es exclusivo de la sección: el texto
+      // «silenciadas» a secas ya aparece en la línea de resumen.
+      await montar(tester);
+      expect(find.text('Siguen mal, pero ya se dieron por vistas'),
+          findsNothing);
+    });
+  });
 }

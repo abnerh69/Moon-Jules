@@ -254,24 +254,28 @@ def test_la_columna_y_el_motivo_hablan_igual():
         assert columna(seg).strip() == humano(seg).replace(" ", "")
 
 
-def test_el_triaje_masivo_alcanza_a_las_fallidas(tmp_path):
-    """Encontrado en campo: `ack --stale-before` silenció 3 de 9.
+def test_el_triaje_masivo_mide_cuando_empezo_no_cuando_se_toco(tmp_path):
+    """Encontrado en campo, dos veces.
 
-    Filtraba por `updateTime`, y las sesiones FAILED no lo tienen útil:
-    su reloj está congelado. Como son la mayor parte de la deuda, el
-    comando dejaba fuera justo lo que más estorba. Una sesión abierta
-    hace meses es deuda vieja aunque no se sepa cuándo dejó de moverse.
+    `ack --stale-before` silenció 3 de 9. El primer arreglo cayó en
+    `update_time or create_time`, que seguía sin funcionar: el API
+    devuelve `updateTime` reciente para sesiones fallidas en mayo, así
+    que las daba por actuales.
+
+    «Deuda vieja» significa que el trabajo empezó hace mucho, y eso lo
+    responde `createTime`, que además es inmutable.
     """
     from datetime import datetime as _dt
 
     corte = NOW - timedelta(days=30)
 
     def cuando(f):
-        return f.session.update_time or f.session.create_time
+        return f.session.create_time
 
+    # El caso real: empezó en mayo, pero el API la "actualizó" hoy.
     fallida = Finding(
         Session(name="sessions/f", state=SessionState.FAILED, source=SRC,
-                create_time=ago(days=100), update_time=None),
+                create_time=ago(days=100), update_time=NOW),
         Verdict.FAILED, Action.ALERT, None, "fallida",
     )
     pausada = Finding(
@@ -281,7 +285,7 @@ def test_el_triaje_masivo_alcanza_a_las_fallidas(tmp_path):
     )
     reciente = Finding(
         Session(name="sessions/r", state=SessionState.FAILED, source=SRC,
-                create_time=ago(days=1), update_time=None),
+                create_time=ago(days=1), update_time=NOW),
         Verdict.FAILED, Action.ALERT, None, "fallida hoy",
     )
     viejas = [f for f in (fallida, pausada, reciente)
