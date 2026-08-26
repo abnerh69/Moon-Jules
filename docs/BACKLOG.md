@@ -275,6 +275,13 @@ obsolete»—. Anotado en `app/README.md`: es mucha maquinaria para crear
 un canal, y el día que estorbe se sustituye por quince líneas de Kotlin
 en `MainActivity`.
 
+### E44 — La memoria de lo nativo *(entrega 32)*
+`docs/ANDROID.md`. Los `apply-NN.sh` se autoborran: el estado queda en
+git, el motivo no, y ninguno de esos ajustes es evidente al leer el
+fichero después. Recoge las ocho cosas configuradas en `app/android/`,
+qué falla sin cada una, y el árbol de diagnóstico de «no llegan las
+notificaciones» en el orden en que salió caro descubrirlo.
+
 ## Siguiente ola
 
 ## Retirado

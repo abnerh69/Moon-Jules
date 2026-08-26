@@ -110,6 +110,11 @@ La marca del último acceso vive en el almacén seguro y no en
 dispositivo dejaría la ventana abierta indefinidamente. Una marca en el
 futuro se trata como vencida.
 
+Todo lo que hubo que configurar en `app/android/` está en
+`../docs/ANDROID.md`: qué se tocó, por qué, y qué falla sin cada cosa.
+Los scripts `apply-NN.sh` se autoborran, así que ese documento es la
+única memoria del motivo.
+
 ### En macOS
 
 El *App Sandbox* bloquea la red saliente por defecto. Si RTDB no conecta
@@ -181,6 +186,8 @@ Moon-Jules envía por FCM con la misma cuenta de servicio que publica el
 snapshot, así que basta con `fcm = true` en `[notify]` del lado del Mac.
 
 ### El canal de notificaciones
+
+Explicado a fondo, con el diagnóstico completo, en `../docs/ANDROID.md`.
 
 Desde Android 8 **toda notificación necesita un canal**, y con la app
 cerrada quien la muestra es el SDK nativo de Firebase, no el código

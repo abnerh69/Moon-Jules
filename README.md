@@ -247,4 +247,5 @@ lógica de presentación son Dart puro y se prueban sin emulador: `cd app
 | `docs/02-MoonJules-Inception.md` | alcance y la NO list |
 | `docs/adr/` | las cinco decisiones y sus porqués |
 | `docs/spikes/` | de dónde salen los números |
+| `docs/ANDROID.md` | configuración nativa de la app y diagnóstico de notificaciones |
 | `AGENTS.md` | contrato de trabajo para agentes en este repo |
