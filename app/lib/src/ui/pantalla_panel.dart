@@ -23,6 +23,9 @@ class PantallaPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final panel = ref.watch(panelProvider);
+    // Se observa aquí para que el registro ocurra al abrir la app y
+    // siga vivo mientras lo esté.
+    final avisos = ref.watch(avisosProvider);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Moon-Jules'),
@@ -45,16 +48,17 @@ class PantallaPanel extends ConsumerWidget {
           titulo: 'No se pudo leer Firebase',
           detalle: '$e',
         ),
-        data: (v) => _Contenido(vista: v),
+        data: (v) => _Contenido(vista: v, avisos: avisos),
       ),
     );
   }
 }
 
 class _Contenido extends StatelessWidget {
-  const _Contenido({required this.vista});
+  const _Contenido({required this.vista, required this.avisos});
 
   final VistaPanel vista;
+  final AsyncValue<String?> avisos;
 
   @override
   Widget build(BuildContext context) {
@@ -62,6 +66,16 @@ class _Contenido extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
+        // Sin avisos push, la app solo alerta cuando está abierta, que
+        // es donde se estaba antes de que existiera. Merece decirse.
+        if (avisos.hasError || avisos.valueOrNull == null && avisos.hasValue)
+          const _Aviso(
+            icono: Icons.notifications_off,
+            titulo: 'Sin avisos en segundo plano',
+            detalle: 'No se pudo registrar este teléfono. Solo verás las '
+                'alertas con la app abierta. Comprueba el permiso de '
+                'notificaciones.',
+          ),
         // Sin conexión, lo primero es decir que el problema es de aquí.
         // Si no, los latidos rancios de la caché harían acusar a las
         // tres máquinas de haber muerto a la vez.

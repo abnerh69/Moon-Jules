@@ -75,6 +75,18 @@ final panelProvider = Provider<AsyncValue<VistaPanel>>((ref) {
   );
 });
 
+/// Registra este teléfono para recibir avisos y sigue las rotaciones.
+///
+/// Un solo flujo para las dos cosas: el primer valor es el registro
+/// inicial y los siguientes son los tokens renovados. **Los tokens
+/// rotan**, y uno viejo deja de recibir sin avisar de nada — que es
+/// justo el modo de fallo que esta app existe para no repetir.
+final avisosProvider = StreamProvider<String?>((ref) async* {
+  final repo = ref.watch(repositorioProvider);
+  yield await repo.registrarDispositivo();
+  yield* repo.tokensRenovados();
+});
+
 /// Sesión concreta, para la ventana de detalle.
 final sesionProvider = Provider.family<SesionVista?, String>((ref, id) {
   final panel = ref.watch(panelProvider).valueOrNull;

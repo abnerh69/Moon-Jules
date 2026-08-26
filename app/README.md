@@ -1,4 +1,6 @@
-# Moon-Jules App
+# Moon Jules — app
+
+![icono](icono.png)
 
 Panel de Android para ver el enjambre desde el móvil. Una pantalla, dos
 ventanas de detalle. Uso personal, sin publicar.
@@ -148,8 +150,27 @@ la hora del teléfono, así que uno cinco minutos adelantado daría por
 caídas máquinas que publican cada cinco. `.info/serverTimeOffset` da la
 diferencia y se aplica antes de comparar.
 
+## Avisos push
+
+La app registra su token en `{root}/devices/{token}` al abrirse y sigue
+sus rotaciones: **un token viejo deja de recibir sin avisar de nada**,
+que es justo el modo de fallo que este proyecto existe para no repetir.
+
+Moon-Jules envía por FCM con la misma cuenta de servicio que publica el
+snapshot, así que basta con `fcm = true` en `[notify]` del lado del Mac.
+
+Dos cosas que conviene saber. Con la app **en primer plano** el sistema
+no muestra notificación: estás mirando la pantalla, así que el aviso
+sería redundante. Y la alerta de instancia caída **no llega por push**
+—la máquina que se cayó no puede enviarla—; esa la calcula la propia app
+comparando `heartbeat_ms` con `stale_after_s`.
+
+Si el registro falla, la pantalla lo dice arriba: sin push, solo verías
+las alertas con la app abierta.
+
 ## Lo que falta
 
-El registro de FCM y los botones que tocan Jules —desatascar, silenciar,
-pausar—. Se dejaron fuera a propósito: la capacidad de actuar sobre el
-enjambre desde el bolsillo se gana, no se asume.
+Los botones que tocan Jules —desatascar, silenciar, pausar—. Se dejaron
+fuera a propósito: la capacidad de actuar sobre el enjambre desde el
+bolsillo se gana, no se asume. El canal de comandos ya existe en ambos
+lados y está probado; falta solo la interfaz.

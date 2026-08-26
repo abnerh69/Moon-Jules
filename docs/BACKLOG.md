@@ -230,6 +230,13 @@ el SDK sirve de caché y mostraría latidos rancios como si el enjambre
 hubiera muerto. Y el reloj se corrige con `.info/serverTimeOffset`,
 porque un móvil adelantado daría por caídas máquinas sanas.
 
+### E39 — Avisos push e identidad visual *(entrega 27)*
+La app registra su token FCM al abrirse y sigue las rotaciones —un token
+viejo deja de recibir sin avisar—. Si el registro falla, la pantalla lo
+dice: sin push solo hay alertas con la app abierta. Nombre visible
+«Moon Jules» en vez del identificador del paquete, e icono propio
+generado por `tools/generar_iconos.py`.
+
 ## Siguiente ola
 
 ## Retirado
