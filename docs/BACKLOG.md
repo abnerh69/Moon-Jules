@@ -343,6 +343,17 @@ pregunta sin responder, verificado contra la sesión real de
 `ppp-n-kits`. La ventana para contestar a tiempo era de **32 segundos**,
 así que el valor está en el diagnóstico, no en la velocidad.
 
+### E50 — La regla del abandono *(entrega 39)*
+Consecuencia de la 38: al habilitar la reactivación, ocho sesiones
+muertas en mayo pasaron a ser candidatas a revivir solas. Nunca se actúa
+sobre una sesión que nadie ha mirado en 48 horas —medido desde el último
+contacto de cualquiera, no desde la apertura—. Se aplica en el único
+punto por el que pasan todos los dictámenes.
+
+Incluye `{root}/settings` en RTDB con el plazo y el prompt, con
+precedencia sobre el config local; un valor absurdo o ilegible se ignora
+y gana el `config.toml`, que no depende de la red.
+
 ## Siguiente ola
 
 ## Retirado

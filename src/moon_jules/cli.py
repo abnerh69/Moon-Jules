@@ -187,6 +187,9 @@ class Monitor:
     _eventos: dict[str, datetime] = field(default_factory=dict)
     #: Sesiones que fallaron con una pregunta sin responder.
     _preguntando: dict[str, bool] = field(default_factory=dict)
+    #: Ajustes remotos vigentes, refrescados en cada ciclo.
+    abandon_h: int | None = None
+    prompt: str | None = None
 
     async def cycle(
         self,
@@ -240,8 +243,15 @@ class Monitor:
                 # que esta viva y disponible—, pero no actua.
                 src = replace(src, mode=AutonomyMode.READ_ONLY)
             nudge = nudges.get(s.name)
+            # El plazo de abandono llega de los ajustes remotos si los
+            # hay; el resto de la politica sigue siendo la del source.
+            politica = (
+                replace(src.policy, abandon_after_h=self.abandon_h)
+                if self.abandon_h
+                else src.policy
+            )
             finding = assess(
-                s, fresh, at, policy=src.policy, mode=src.mode, nudge=nudge
+                s, fresh, at, policy=politica, mode=src.mode, nudge=nudge
             )
             if (s.name, finding.verdict.value) in acked:
                 finding = replace(finding, acked=True)
@@ -451,10 +461,14 @@ class Monitor:
 
     async def _act(self, f: Finding, policy: Policy, at: datetime) -> None:
         if f.action is Action.NUDGE:
+            # El prompt remoto manda si lo hay. Se registra el texto
+            # exacto enviado, no el configurado: si cambia, `history`
+            # debe poder decir cual funciono y cual no.
+            texto = self.prompt or policy.nudge_prompt
             log.info("nudge -> %s (%s): %s", f.session.repo, f.session.id, f.reason)
-            await self.client.send_message(f.session.name, policy.nudge_prompt)
+            await self.client.send_message(f.session.name, texto)
             if self.store:
-                self.store.record_nudge(f.session.name, policy.nudge_prompt, at)
+                self.store.record_nudge(f.session.name, texto, at)
         elif f.action is Action.APPROVE_PLAN:
             log.info("aprobando plan de %s (%s)", f.session.repo, f.session.id)
             await self.client.approve_plan(f.session.name)
@@ -841,6 +855,20 @@ async def atender_comando(
           f"— {resultado.message}")
     log.info("comando %s -> %s: %s", cmd.id, resultado.status, resultado.message)
     return resultado.refrescar
+
+
+async def leer_ajustes(cfg: Config, sink: Sink | None) -> tuple[Policy, str]:
+    """Politica efectiva: RTDB manda, el config local es el respaldo."""
+    base = cfg.policy
+    if not isinstance(sink, RtdbSink):
+        return base, base.nudge_prompt
+    a = await sink.read_settings()
+    if a.abandon_after_h is None and a.nudge_prompt is None:
+        return base, base.nudge_prompt
+    return (
+        replace(base, abandon_after_h=a.abandon_after_h or base.abandon_after_h),
+        a.nudge_prompt or base.nudge_prompt,
+    )
 
 
 async def leer_control(cfg: Config, sink: Sink | None) -> tuple[Control, str]:
@@ -1243,6 +1271,8 @@ async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
                             # terminada; un repaso completo periodico acota
                             # cuanto puede tardarse en notarlo.
                             completo = ciclo % cfg.full_refresh_every == 0
+                            politica, mon.prompt = await leer_ajustes(cfg, sink)
+                            mon.abandon_h = politica.abandon_after_h
                             control, rol = await leer_control(cfg, sink)
                             if rol != rol_previo:
                                 log.info("papel de esta instancia: %s", rol)

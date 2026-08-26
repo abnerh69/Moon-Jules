@@ -82,6 +82,13 @@ class Policy:
     queue_warn_s: int = 1800
     nudge_verify_s: int = 600  # peor caso medido 8 min + margen
     max_nudges_per_session: int = 3
+    #: Horas sin que nadie toque una sesion para darla por abandonada.
+    #:
+    #: Pasado ese plazo Moon-Jules **no actua**: solo informa. Reactivar
+    #: trabajo de hace semanas gasta cuota y abre PRs que nadie pidio, y
+    #: la decision de recuperarlo es del arquitecto, no de una
+    #: herramienta que vigila.
+    abandon_after_h: int = 48
     nudge_prompt: str = "Completa la tarea"
 
 
@@ -99,6 +106,14 @@ class Freshness:
 
     last_agent_at: datetime | None = None
     last_agent_kind: str | None = None
+    #: Ultimo contacto de **cualquiera**, agente o humano.
+    #:
+    #: Distinto de `last_agent_at` a proposito: para medir el silencio
+    #: solo cuentan las senales del agente (invariante 1), pero para
+    #: decidir si una sesion esta abandonada cuenta tambien que un
+    #: humano la haya mirado. Una sesion vieja a la que el arquitecto
+    #: escribio ayer no esta abandonada.
+    last_touch_at: datetime | None = None
 
     @property
     def clock_frozen(self) -> bool:
@@ -110,6 +125,10 @@ class Freshness:
             return None
         return (now - self.last_agent_at).total_seconds()
 
+
+#: Acciones que escriben en Jules. Son las que la regla del abandono
+#: frena: alertar sobre una sesion vieja no molesta a nadie, actuar si.
+ESCRITURAS = frozenset({Action.NUDGE, Action.APPROVE_PLAN})
 
 #: Veredictos que no requieren nada de nadie.
 SIN_PROBLEMA = frozenset({Verdict.HEALTHY, Verdict.DONE, Verdict.PAUSED_DONE})
@@ -202,11 +221,32 @@ def freshness(activities: list[Activity]) -> Freshness:
     Invariante 3: se usa `createTime` de la actividad, no `updateTime`
     de la sesion, que se mueve por causas ajenas al progreso del agente.
     """
-    agent = [a for a in activities if a.originator == "agent" and a.create_time]
+    con_fecha = [a for a in activities if a.create_time]
+    ultimo_toque = (
+        max(a.create_time for a in con_fecha) if con_fecha else None
+    )
+    agent = [a for a in con_fecha if a.originator == "agent"]
     if not agent:
-        return Freshness()
+        return Freshness(last_touch_at=ultimo_toque)
     last = max(agent, key=lambda a: a.create_time)  # type: ignore[arg-type,return-value]
-    return Freshness(last_agent_at=last.create_time, last_agent_kind=last.kind)
+    return Freshness(
+        last_agent_at=last.create_time,
+        last_agent_kind=last.kind,
+        last_touch_at=ultimo_toque,
+    )
+
+
+def _abandonada(fresh: Freshness, ahora: datetime, p: Policy) -> float | None:
+    """Horas sin que nadie la toque, si supera el plazo.
+
+    Cuenta el ultimo contacto de **cualquiera**: si el arquitecto le
+    escribio ayer, la sesion no esta abandonada por muy vieja que sea.
+    """
+    ref = fresh.last_touch_at or fresh.last_agent_at
+    if ref is None:
+        return None
+    horas = (ahora - ref).total_seconds() / 3600
+    return horas if horas > p.abandon_after_h else None
 
 
 def _gate(action: Action, mode: AutonomyMode) -> tuple[Action, Action | None]:
@@ -235,8 +275,25 @@ def assess(
     sil = fresh.silence_s(now)
 
     def out(v: Verdict, a: Action, reason: str) -> Finding:
+        # La regla del abandono se aplica **aqui**, en el unico sitio
+        # por el que pasan todos los dictamenes. Ponerla en cada rama
+        # habria dejado alguna fuera tarde o temprano.
+        original = a
+        abandonada = _abandonada(fresh, now, p) if a in ESCRITURAS else None
+        if abandonada is not None:
+            a = Action.ALERT
+            reason = (
+                f"{reason} — sin que nadie la toque desde hace "
+                f"{humano(abandonada * 3600)}: no se actua sola"
+            )
         gated, dropped = _gate(a, mode)
-        return Finding(session, v, gated, sil, reason, downgraded_from=dropped)
+        # Queda constancia de lo que se habria hecho. Sin esto, una
+        # accion frenada por abandono seria indistinguible de no haber
+        # tenido nada que hacer.
+        return Finding(
+            session, v, gated, sil, reason,
+            downgraded_from=dropped or (original if original is not a else None),
+        )
 
     st = session.state
 

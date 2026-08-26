@@ -93,6 +93,30 @@ Reglas de la reactivación:
 - Mientras está dentro del plazo no se toca: `reactivandose`.
 - El presupuesto de nudges sigue aplicando.
 
+### Enmienda (entrega 39): la regla del abandono
+
+**Nunca se actúa sobre una sesión que nadie ha mirado en 48 horas.**
+
+Es consecuencia directa de haber habilitado la reactivación: en cuanto
+las fallidas dejaron de ser intocables, ocho sesiones muertas en mayo
+pasaron a ser candidatas a revivir en el primer ciclo. Reactivar trabajo
+de hace meses gasta cuota y abre PRs que nadie pidió, y esa decisión es
+del arquitecto.
+
+Se mide desde el último contacto de **cualquiera**, agente o humano, no
+desde la apertura: una sesión abierta hace meses a la que se escribió
+ayer no está abandonada, y una abierta hace tres días que trabajó hasta
+hace veinte minutos está viva.
+
+La regla se aplica en el único punto por el que pasan todos los
+dictámenes. Ponerla en cada rama habría dejado alguna fuera. Frena las
+escrituras, no la información: enterarse de que algo está mal nunca
+sobra.
+
+El triaje **no** sustituye a esta regla. Silenciar saca del radar; esto
+impide actuar. Son cosas distintas y la segunda protege por defecto, sin
+depender de que el arquitecto haya hecho nada.
+
 ### Murió preguntando
 
 Una sesión que falla con una pregunta del agente sin responder es
