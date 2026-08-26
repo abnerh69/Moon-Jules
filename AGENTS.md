@@ -142,6 +142,15 @@ Contrato verificado el 2026-08-24 contra el API en vivo:
 El discovery doc (`https://jules.googleapis.com/$discovery/rest?version=v1alpha`)
 sí lo es, y es público. Ante duda, consúltalo.
 
+## La app se verifica entera
+
+`cd app && flutter analyze && flutter test` antes de dar nada por bueno.
+Analizar solo `lib/src/model/` con `dart analyze` es cómodo —no necesita
+el SDK de Flutter— pero deja fuera la capa que conecta con Firebase y
+con los widgets, y ahí ya se colaron dos fallos que solo aparecían al
+compilar. Cubrir únicamente lo fácil de cubrir da una falsa sensación de
+seguridad.
+
 ## El servicio no se prueba solo
 
 `src/moon_jules/service.py` genera plists y unidades que **nadie puede
