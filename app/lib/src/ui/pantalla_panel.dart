@@ -59,7 +59,7 @@ class _Contenido extends StatelessWidget {
   const _Contenido({required this.vista, required this.avisos});
 
   final VistaPanel vista;
-  final AsyncValue<String?> avisos;
+  final AsyncValue<RegistroAvisos> avisos;
 
   @override
   Widget build(BuildContext context) {

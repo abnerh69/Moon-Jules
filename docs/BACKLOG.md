@@ -258,6 +258,15 @@ qué sesión era cuál, y el log decía «1 notificación enviada» sin
 mencionar a cuántos dispositivos. Las tres cosas eran información que el
 sistema tenía y no enseñaba.
 
+### E42 — La capa de UI también se verifica *(entrega 30)*
+`_Contenido.avisos` quedó declarado `AsyncValue<String?>` y usado como
+`AsyncValue<RegistroAvisos>`: la app no compilaba. Se entregó así porque
+la verificación cubría solo el modelo —Dart puro— y la capa de Flutter
+iba a ciegas. Ahora el SDK de Flutter está instalado en el entorno de
+desarrollo y **toda entrega pasa por `flutter analyze` y `flutter
+test`** antes de empaquetarse. Es el segundo fallo de esta clase: el
+primero fueron los imports de la entrega 21.
+
 ## Siguiente ola
 
 ## Retirado

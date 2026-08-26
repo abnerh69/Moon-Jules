@@ -20,9 +20,15 @@ emulador y sin dispositivo:
 cd app && flutter test
 ```
 
-`lib/src/data/` es el pegamento con los SDK de Firebase, y es la única
-capa que toca la red. Cuanto más fina sea, menos código queda sin
-verificar.
+`lib/src/data/` y `lib/src/ui/` son el pegamento con los SDK. Cuanto más
+finos, mejor: la lógica vive en el modelo.
+
+Antes de entregar, **todo pasa por `flutter analyze` y `flutter test`**.
+Durante varias entregas solo se comprobó el modelo con `dart analyze`,
+porque el resto necesita el SDK de Flutter, y eso dejó pasar dos fallos
+que solo aparecían al compilar: un import a un paquete inexistente y un
+campo declarado con un tipo y usado con otro. Analizar únicamente lo
+fácil de analizar da una falsa sensación de cobertura.
 
 ## Tres reglas del contrato
 
