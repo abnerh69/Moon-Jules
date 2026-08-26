@@ -48,7 +48,7 @@ Map<String, Object?> snapshotReal({
 }) =>
     {
       'schema': kEsquemaSoportado,
-      'instance': {
+      'instance': <String, Object?>{
         'cycle_interval_s': 300,
         'heartbeat_ms': latidoMs,
         'id': 'la-dorada',
@@ -61,7 +61,11 @@ Map<String, Object?> snapshotReal({
       // Tal como llega: el resto de claves no existen porque eran nulas.
       'control': control ?? {'known': true},
       'sessions': sesiones ?? [fallidaReal, vivaReal],
-      'swarm': {
+      // Tipado explicito: Dart inferiria `Map<String, int>` y los tests
+      // que sustituyen un valor por otro tipo —`paused`, por ejemplo—
+      // reventarian. Ademas es mas fiel: lo que llega de Firebase es un
+      // mapa heterogeneo, no uno de enteros.
+      'swarm': <String, Object?>{
         'acked': 8,
         'active': 10,
         'attention': 8,

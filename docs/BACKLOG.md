@@ -296,6 +296,15 @@ Incluye un aviso en `doctor` cuando el servicio corre una versión
 distinta de la instalada: no reiniciar tras aplicar una entrega costó
 varias vueltas persiguiendo fallos ya arreglados.
 
+### E46 — La pantalla también se prueba *(entrega 35)*
+Diecinueve tests de widget que montan el panel con providers fijos, sin
+Firebase ni dispositivo. Cubren lo que el modelo no puede: que lo
+decidido se pinte, y la maraña de avisos de la cabecera —sin conexión,
+nadie vigilando, relevo sin confirmar, estado del push— que se excluyen
+o se acumulan y nunca se habían ejercitado. Incluye el arreglo de
+`ack --stale-before`, que filtraba por `updateTime` y dejaba fuera a las
+sesiones `FAILED`, que son la mayor parte de la deuda: silenció 3 de 9.
+
 ## Siguiente ola
 
 ## Retirado

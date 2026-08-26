@@ -611,12 +611,21 @@ async def cmd_ack(cfg: Config, args: argparse.Namespace) -> int:
         corte = datetime.fromisoformat(args.stale_before).replace(tzinfo=UTC)
         async with JulesClient(cfg.api_key, base_url=cfg.base_url) as c:
             report = await Monitor(c, cfg, store).cycle(execute=False)
+        # Se mira `updateTime` y, si no lo hay, `createTime`. Filtrar
+        # solo por el primero dejaba fuera a las sesiones FAILED, que
+        # son la mayor parte de la deuda: su reloj esta congelado, asi
+        # que no tienen actividad reciente que comparar. Una sesion
+        # abierta hace meses es deuda vieja aunque no se sepa cuando
+        # dejo de moverse.
+        def _cuando(f: Finding) -> datetime | None:
+            return f.session.update_time or f.session.create_time
+
         candidatas = [
             f
             for f in report.problems
             if not f.acked
-            and f.session.update_time is not None
-            and f.session.update_time < corte
+            and _cuando(f) is not None
+            and _cuando(f) < corte  # type: ignore[operator]
         ]
         if not candidatas:
             print(f"nada sin tocar desde {args.stale_before}.")

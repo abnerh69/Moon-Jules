@@ -16,7 +16,7 @@ import pytest
 
 from moon_jules.cli import Monitor, render
 from moon_jules.config import Budgets, Config, SourceConfig
-from moon_jules.detector import Policy, Verdict
+from moon_jules.detector import Action, Finding, Policy, Verdict
 from moon_jules.models import Activity, AutonomyMode, Session, SessionState
 from moon_jules.store import Store
 
@@ -252,3 +252,39 @@ def test_la_columna_y_el_motivo_hablan_igual():
 
     for seg in (25, 3000, 10800, 8208000):
         assert columna(seg).strip() == humano(seg).replace(" ", "")
+
+
+def test_el_triaje_masivo_alcanza_a_las_fallidas(tmp_path):
+    """Encontrado en campo: `ack --stale-before` silenció 3 de 9.
+
+    Filtraba por `updateTime`, y las sesiones FAILED no lo tienen útil:
+    su reloj está congelado. Como son la mayor parte de la deuda, el
+    comando dejaba fuera justo lo que más estorba. Una sesión abierta
+    hace meses es deuda vieja aunque no se sepa cuándo dejó de moverse.
+    """
+    from datetime import datetime as _dt
+
+    corte = NOW - timedelta(days=30)
+
+    def cuando(f):
+        return f.session.update_time or f.session.create_time
+
+    fallida = Finding(
+        Session(name="sessions/f", state=SessionState.FAILED, source=SRC,
+                create_time=ago(days=100), update_time=None),
+        Verdict.FAILED, Action.ALERT, None, "fallida",
+    )
+    pausada = Finding(
+        Session(name="sessions/p", state=SessionState.PAUSED, source=SRC,
+                create_time=ago(days=100), update_time=ago(days=95)),
+        Verdict.PAUSED_STALE, Action.ALERT, 100.0, "pausada",
+    )
+    reciente = Finding(
+        Session(name="sessions/r", state=SessionState.FAILED, source=SRC,
+                create_time=ago(days=1), update_time=None),
+        Verdict.FAILED, Action.ALERT, None, "fallida hoy",
+    )
+    viejas = [f for f in (fallida, pausada, reciente)
+              if cuando(f) is not None and cuando(f) < corte]
+    assert {f.session.name for f in viejas} == {"sessions/f", "sessions/p"}
+    assert isinstance(cuando(fallida), _dt)
