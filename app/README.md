@@ -192,6 +192,13 @@ Hacen falta las dos cosas, y con una sola no basta: declarar el
 identificador en el manifiesto (lo hace `apply-29.sh`) y crear el canal
 al arrancar (`data/canal_avisos.dart`).
 
+`flutter_local_notifications` está solo para eso, y trae una exigencia
+de Gradle: usa APIs de `java.time`, que no existen en Android antiguo,
+así que hace falta *core library desugaring* y Java 11 (`apply-31.sh`).
+Es mucha maquinaria para crear un canal; **si algún día estorba, esas
+quince líneas se escriben en Kotlin dentro de `MainActivity` y la
+dependencia desaparece.**
+
 El icono pequeño también se declara. Android **ignora su color** y lo
 pinta como silueta a partir del alfa; sin uno monocromo propio, el icono
 de la app se ve como un cuadrado blanco.

@@ -267,6 +267,14 @@ desarrollo y **toda entrega pasa por `flutter analyze` y `flutter
 test`** antes de empaquetarse. Es el segundo fallo de esta clase: el
 primero fueron los imports de la entrega 21.
 
+### E43 — Desugaring para el canal *(entrega 31)*
+`flutter_local_notifications` usa `java.time` y Gradle aborta sin *core
+library desugaring*. Se activa junto con Java 11, que las bibliotecas de
+desugar 2.x exigen —y de paso desaparece el aviso de «source value 8 is
+obsolete»—. Anotado en `app/README.md`: es mucha maquinaria para crear
+un canal, y el día que estorbe se sustituye por quince líneas de Kotlin
+en `MainActivity`.
+
 ## Siguiente ola
 
 ## Retirado
