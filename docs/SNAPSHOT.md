@@ -1,11 +1,12 @@
 # Contrato del snapshot
 
 ```meta
-Esquema:  4
-Desde:    Moon-Jules v0.18.0 (entrega 25)
+Esquema:  5
+Desde:    Moon-Jules v0.20.0 (entrega 37)
 Historia: 1 — entrega 13. 2 — añade `control` y `instance.role`.
           3 — añade `instance.heartbeat_ms` y el canal de comandos.
           4 — añade `sessions[].last_agent_message`.
+          5 — añade `last_agent_at` y `last_agent_kind`.
 Estado:   Estable
 ```
 
@@ -112,6 +113,8 @@ separa.
       "silence_s": 3120,
       "age_s": 10800,
       "started_at": "2026-08-24T12:04:05Z",
+      "last_agent_at": "2026-08-24T12:52:11Z",
+      "last_agent_kind": "progressUpdated",
       "url": "https://jules.google.com/session/...",
       "nudges": 1,
       "last_nudge_at": "2026-08-24T14:58:00Z",
@@ -197,6 +200,8 @@ y lo problemático; las completadas sin novedad no viajan.
 | `silence_s` | Segundos sin señal del agente. **Ausente no significa cero**: significa que el reloj está congelado porque la sesión cerró, y ese tiempo es reposo, no silencio. |
 | `age_s` | Segundos desde que se abrió la sesión. Es "cuánto lleva trabajando", pregunta distinta de `silence_s`. |
 | `nudges` | Cuántas veces se le envió el prompt de continuación. |
+| `last_agent_at` | Cuándo ocurrió el último evento **del agente**. **No es `updateTime`**: el API mueve ese campo a la fecha de hoy para sesiones muertas hace meses, y confundir «el sistema la miró» con «aquí pasó algo» no es un matiz. |
+| `last_agent_kind` | De qué fue: `sessionFailed`, `agentMessaged`, `progressUpdated`, `sessionCompleted`, `planGenerated`, `planApproved`. |
 | `last_agent_message` | Lo último que dijo Jules, recortado a 400 caracteres. **Solo para lo que requiere atención.** Es donde está la información: `reason` repite siempre "unable to complete the task", mientras el agente suele explicar qué hizo o qué preguntó. |
 | `last_nudge_outcome` | `answered`, `unanswered` o `pending`. **Si aparecen varios `unanswered`, el prompt dejó de funcionar** — eso importa más que cualquier sesión concreta. |
 
@@ -233,6 +238,32 @@ avisaría doce veces por hora y acabarías silenciando la app.
 **Una alerta no puede salir de aquí: la de instancia caída.** La máquina
 que se cayó es precisamente la que tendría que avisar. Esa la detecta la
 app vigilando `heartbeat_ms` contra `stale_after_s`.
+
+## Ajustes
+
+`{root}/settings` permite cambiar dos cosas desde el teléfono sin abrir
+el portátil. **Mandan sobre el `config.toml`**: ese es el sentido de
+moverlas aquí.
+
+```json
+{
+  "abandon_after_h": 48,
+  "nudge_prompt": "Completa la tarea"
+}
+```
+
+`abandon_after_h` es el plazo tras el cual Moon-Jules **deja de actuar**
+sobre una sesión que nadie ha mirado. Sigue informando; lo que no hace
+es reactivar por su cuenta trabajo de hace semanas.
+
+`nudge_prompt` es el texto que se envía al desatascar. El actual está
+medido —17 de 17 rescates respondidos entre el histórico y las pruebas
+en vivo— así que cambiarlo tira una certeza; a cambio, `calibrate` puede
+medir si el nuevo mantiene la tasa.
+
+Un valor absurdo se ignora y gana el config local: cero horas frenaría
+toda acción y un prompt vacío no diría nada. Lo mismo si el nodo no
+existe o no se puede leer.
 
 ## Comandos
 

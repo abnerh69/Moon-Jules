@@ -317,6 +317,43 @@ Incluye en la app la sección plegada de sesiones silenciadas: pintarlas
 idénticas y en rojo junto a un problema real vaciaba de significado el
 color.
 
+### E48 — Cuándo habló Jules por última vez *(entrega 37)*
+El detalle mostraba «lleva abierta 104 d» sin una sola fecha, y el único
+candidato publicable —`updateTime`— resultó no medir nada: el API lo
+mueve a hoy para sesiones muertas en mayo.
+
+El dato bueno estaba guardado desde la entrega 01 (`last_agent_at`) y
+nunca se publicaba. Pero también estaba mal para sesiones terminales:
+`_offline_freshness` lo rellenaba con ese mismo `updateTime`. Al
+detector le daba igual —su reloj está congelado— pero como dato
+publicable era falso. El instante real vivía en el `createTime` de la
+actividad `sessionFailed`, que se leía para sacar la razón y se tiraba.
+
+Esquema 4 → 5. El detalle muestra ahora tres fechas rotuladas y traduce
+el tipo de evento: `sessionFailed` no es para leerse en una pantalla.
+
+### E49 — Las fallidas se reactivan *(entrega 38)*
+La razón de ser del proyecto, ausente hasta ahora. Nueve de las diez
+sesiones problemáticas del enjambre están en `FAILED`, y la escalera las
+excluía por una suposición nunca comprobada. Ahora reciben un intento;
+si no reviven, se alerta y no se insiste.
+
+Incluye el veredicto `failed_asking` para las que mueren con una
+pregunta sin responder, verificado contra la sesión real de
+`ppp-n-kits`. La ventana para contestar a tiempo era de **32 segundos**,
+así que el valor está en el diagnóstico, no en la velocidad.
+
+### E50 — La regla del abandono *(entrega 39)*
+Consecuencia de la 38: al habilitar la reactivación, ocho sesiones
+muertas en mayo pasaron a ser candidatas a revivir solas. Nunca se actúa
+sobre una sesión que nadie ha mirado en 48 horas —medido desde el último
+contacto de cualquiera, no desde la apertura—. Se aplica en el único
+punto por el que pasan todos los dictámenes.
+
+Incluye `{root}/settings` en RTDB con el plazo y el prompt, con
+precedencia sobre el config local; un valor absurdo o ilegible se ignora
+y gana el `config.toml`, que no depende de la red.
+
 ## Siguiente ola
 
 ## Retirado
@@ -342,11 +379,12 @@ Chequeo periódico de la `revision` del discovery doc. Si cambia, avisa.
 Es la mitigación del riesgo 1 del Inception (API en alpha).
 *Depende de: E01.*
 
-### E11 — Verificación de `sendMessage` sobre sesión terminal
-La única pregunta que el Spike 01 dejó abierta. Requiere una sesión
-prescindible y decisión del arquitecto. Si el API lo acepta, habilita
-el reintento automático de sesiones `FAILED` en `full_auto`.
-*Bloqueada por: decisión del arquitecto.*
+### E11 — Verificación de `sendMessage` sobre sesión terminal *(entrega 38)*
+**Resuelta, y la respuesta era que sí.** El API acepta escribir sobre
+una sesión `FAILED` y la sesión revive. Estuvo bloqueada veinte
+entregas, y mientras tanto la suposición prudente se fue repitiendo
+hasta convertirse en regla implementada, probada y documentada. Ver la
+enmienda de ADR-002.
 
 ### E12 — Arranque persistente *(entrega 17)*
 `moon-jules service install` genera e instala el agente de usuario:

@@ -3,6 +3,7 @@
 ```meta
 Estado:   Aceptada
 Fecha:    2026-08-24
+Enmienda: 2026-08-26 (entrega 38) — las sesiones FAILED se reactivan
 Contexto: Spike 01 (v1.0) §4, Inception v3.0 §6
 ```
 
@@ -62,14 +63,76 @@ falsos positivos; subir a 20 pierde uno de cada cuatro estancamientos.
 | AWAITING_USER_FEEDBACK | inmediata | `sendMessage` | ídem |
 | IN_PROGRESS | silencio > N | `sendMessage` | ídem |
 | PAUSED | silencio > N | alerta (no hay resume en el API) | ídem |
-| FAILED | inmediata | alerta | alerta (ver nota) |
+| FAILED | inmediata | `sendMessage` | `sendMessage` |
 | COMPLETED + cola pendiente | inmediata | nada | `assign-next` |
 
-Nota sobre FAILED: el Spike 01 **no** verificó si `sendMessage` funciona
-sobre una sesión terminal, porque hacerlo exige escribir sobre el
-workspace de producción. Hasta que se verifique, FAILED solo alerta.
-Cuando se verifique, full-auto podrá crear sesión nueva con reintento
-acotado.
+### Enmienda (entrega 38): una sesión fallida se reactiva
+
+**Verificado contra el API el 2026-08-26.** `sendMessage` sobre una
+sesión en `FAILED` devuelve 200, y la sesión vuelve a `IN_PROGRESS`. Se
+comprobó sobre una fallida real de hace 39 horas: revivió y siguió
+trabajando.
+
+La versión original decía lo contrario. El Spike 01 dejó esa pregunta
+abierta —comprobarla exigía escribir sobre el workspace del arquitecto—
+y la suposición prudente se repitió durante veinte entregas como si
+fuera un hecho establecido. **Esa regla dejaba fuera nueve de cada diez
+sesiones problemáticas del enjambre**, que es tanto como decir que
+dejaba fuera el motivo de existir del proyecto.
+
+La lección no es que la suposición fuera errónea, sino que una pregunta
+sin responder se convirtió en respuesta por repetición. Lo que estaba
+marcado como «pendiente de verificar» en un documento acabó
+implementado, probado y documentado como si estuviera cerrado.
+
+Reglas de la reactivación:
+
+- Una fallida recibe **un** intento. Si no revive pasado el plazo de
+  verificación, se alerta y **no se insiste**: un segundo prompt
+  idéntico no la levantará y cada intento cuesta cuota.
+- Mientras está dentro del plazo no se toca: `reactivandose`.
+- El presupuesto de nudges sigue aplicando.
+
+### Enmienda (entrega 39): la regla del abandono
+
+**Nunca se actúa sobre una sesión que nadie ha mirado en 48 horas.**
+
+Es consecuencia directa de haber habilitado la reactivación: en cuanto
+las fallidas dejaron de ser intocables, ocho sesiones muertas en mayo
+pasaron a ser candidatas a revivir en el primer ciclo. Reactivar trabajo
+de hace meses gasta cuota y abre PRs que nadie pidió, y esa decisión es
+del arquitecto.
+
+Se mide desde el último contacto de **cualquiera**, agente o humano, no
+desde la apertura: una sesión abierta hace meses a la que se escribió
+ayer no está abandonada, y una abierta hace tres días que trabajó hasta
+hace veinte minutos está viva.
+
+La regla se aplica en el único punto por el que pasan todos los
+dictámenes. Ponerla en cada rama habría dejado alguna fuera. Frena las
+escrituras, no la información: enterarse de que algo está mal nunca
+sobra.
+
+El triaje **no** sustituye a esta regla. Silenciar saca del radar; esto
+impide actuar. Son cosas distintas y la segunda protege por defecto, sin
+depender de que el arquitecto haya hecho nada.
+
+### Murió preguntando
+
+Una sesión que falla con una pregunta del agente sin responder es
+diagnósticamente distinta de una que falla por dependencias, y hasta
+ahora se veían idénticas. Se reconoce mirando hacia atrás desde el
+`sessionFailed`: si el evento anterior del agente fue `agentMessaged` y
+nadie contestó entre medias, murió preguntando.
+
+Se reactiva igual —muerta es peor que mal contestada— pero el veredicto
+propio permite que la alerta lleve la pregunta.
+
+**La ventana para responder a tiempo no existe.** Medida en un caso
+real: Jules preguntó a las 03:52:06 y se rindió a las 03:52:38.
+Treinta y dos segundos. Ningún intervalo de polling llega a eso, y por
+eso se descartó el polling adaptativo: el valor no está en correr más,
+sino en poder rescatarla después.
 
 ### Verificación del nudge
 

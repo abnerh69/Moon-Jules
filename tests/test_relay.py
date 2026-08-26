@@ -156,6 +156,11 @@ class RtdbFalso:
                 nodo: object = self.datos
                 for parte in ruta.split("/"):
                     nodo = (nodo or {}).get(parte) if isinstance(nodo, dict) else None
+                # RTDB devuelve `null` para un nodo que no existe, no
+                # un cuerpo vacio. La diferencia importa: `json=None` en
+                # httpx significa "sin cuerpo".
+                if nodo is None:
+                    return httpx.Response(200, content=b"null")
                 return httpx.Response(200, json=nodo)
             self.escrituras.append(ruta)
             partes = ruta.split("/")
@@ -286,3 +291,77 @@ def test_el_relevo_exige_un_punto_de_encuentro(tmp_path):
             load(cfg)
     finally:
         del os.environ["MJ_R"]
+
+
+# --------------------------------------------------------------------
+# ajustes desde el teléfono
+# --------------------------------------------------------------------
+
+
+def test_los_ajustes_remotos_mandan_sobre_el_config(tmp_path):
+    """Ese es el sentido de moverlos a RTDB: cambiarlos desde el móvil
+    sin abrir el portátil."""
+    from moon_jules.cli import leer_ajustes
+
+    db = RtdbFalso()
+    db.datos["settings"] = {"abandon_after_h": 12, "nudge_prompt": "Sigue, por favor"}
+    sink = db.sink()
+    politica, prompt = run(leer_ajustes(cfg_relevo(tmp_path, "la-dorada"), sink))
+    run(sink.aclose())
+    assert politica.abandon_after_h == 12
+    assert prompt == "Sigue, por favor"
+
+
+def test_sin_ajustes_remotos_gana_el_config_local(tmp_path):
+    """El caso del primer arranque: el nodo aún no existe."""
+    from moon_jules.cli import leer_ajustes
+
+    sink = RtdbFalso().sink()
+    politica, prompt = run(leer_ajustes(cfg_relevo(tmp_path, "la-dorada"), sink))
+    run(sink.aclose())
+    assert politica.abandon_after_h == 48
+    assert prompt == "Completa la tarea"
+
+
+@pytest.mark.parametrize(
+    "basura",
+    [{"abandon_after_h": 0}, {"abandon_after_h": -5}, {"abandon_after_h": "mucho"},
+     {"nudge_prompt": "   "}, {"nudge_prompt": 42}, "no soy un mapa"],
+)
+def test_un_ajuste_absurdo_se_ignora(basura, tmp_path):
+    """Cero horas frenaría toda acción y un prompt vacío no diría nada.
+    Ante la duda gana el config local, que siempre está ahí."""
+    from moon_jules.cli import leer_ajustes
+
+    db = RtdbFalso()
+    db.datos["settings"] = basura
+    sink = db.sink()
+    politica, prompt = run(leer_ajustes(cfg_relevo(tmp_path, "la-dorada"), sink))
+    run(sink.aclose())
+    assert politica.abandon_after_h == 48
+    assert prompt == "Completa la tarea"
+
+
+def test_sin_rtdb_no_se_intenta_leer_ajustes(tmp_path):
+    from moon_jules.cli import leer_ajustes
+
+    politica, prompt = run(leer_ajustes(config(tmp_path), None))
+    assert politica.abandon_after_h == 48
+    assert prompt == "Completa la tarea"
+
+
+def test_una_respuesta_ilegible_no_tumba_el_ciclo(tmp_path):
+    """Un 200 con cuerpo que no es JSON no debería ocurrir, pero si
+    ocurre lo importante sigue siendo vigilar a Jules."""
+    from moon_jules.cli import leer_ajustes
+
+    def basura(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"<html>error</html>")
+
+    sink = RtdbSink(
+        "https://x.firebaseio.com", "moonjules", "tok",
+        client=httpx.AsyncClient(transport=httpx.MockTransport(basura)),
+    )
+    politica, prompt = run(leer_ajustes(cfg_relevo(tmp_path, "la-dorada"), sink))
+    run(sink.aclose())
+    assert politica.abandon_after_h == 48

@@ -19,6 +19,11 @@ full_refresh_every = 12       # cada cuantos ciclos se repagina todo
 command_ttl_s      = 600      # vida de un comando de la app sin caducidad propia
 stall_after_s   = 900      # ADR-002: N = 15 min, calibrado en el Spike 01
 nudge_verify_s  = 600      # canario del prompt magico
+# NUNCA actuar sobre una sesion que nadie ha mirado en este plazo.
+# Reactivar trabajo de hace semanas gasta cuota y abre PRs que nadie
+# pidio; recuperarlo es decision del arquitecto, no de la herramienta.
+# Se mide desde el ultimo contacto de CUALQUIERA, agente o humano.
+abandon_after_h = 48
 default_mode    = "read_only"   # read_only | unblock_only. ADR-005.
 
 [budgets]

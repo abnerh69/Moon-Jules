@@ -46,12 +46,46 @@ log = get_logger("publish")
 #: Versión del esquema. Se sube al añadir campos; se sube de mayor al
 #: quitar o cambiar el significado de uno. La app debe rechazar lo que
 #: no entienda en vez de interpretarlo a medias.
-SCHEMA = 4
+SCHEMA = 5
 
 #: Cuántas sesiones caben en el snapshot. Con el tope de 15 concurrentes
 #: del plan, 40 deja sitio de sobra para lo activo más lo que requiere
 #: atención, y acota lo que se sube en cada ciclo.
 MAX_SESIONES = 40
+
+
+@dataclass(frozen=True)
+class Ajustes:
+    """Lo que se puede cambiar desde el telefono sin abrir el portatil.
+
+    Vive en `{root}/settings` y **manda sobre el config local**: ese es
+    el sentido de moverlo ahi. Pero solo cuando se puede leer y el valor
+    es sensato; ante cualquier duda gana el `config.toml`, que no
+    depende de la red y siempre esta ahi.
+    """
+
+    abandon_after_h: int | None = None
+    nudge_prompt: str | None = None
+
+    @classmethod
+    def from_rtdb(cls, crudo: object) -> Ajustes:
+        """Interpreta el nodo tolerando basura. Nunca levanta."""
+        if not isinstance(crudo, dict):
+            return cls()
+        horas = crudo.get("abandon_after_h")
+        prompt = crudo.get("nudge_prompt")
+        return cls(
+            # Un valor absurdo se ignora en vez de aplicarse: cero horas
+            # frenaria toda accion, y un negativo no significa nada.
+            abandon_after_h=(
+                int(horas) if isinstance(horas, (int, float)) and horas > 0 else None
+            ),
+            nudge_prompt=(
+                prompt.strip()
+                if isinstance(prompt, str) and prompt.strip()
+                else None
+            ),
+        )
 
 
 @dataclass(frozen=True)
@@ -125,11 +159,15 @@ def construir(
     modo: str,
     max_activas: int,
     nudges: dict[str, Any] | None = None,
+    fresh_at: dict[str, datetime] | None = None,
+    fresh_kind: dict[str, str] | None = None,
     control: Control | None = None,
     role: str = "active",
 ) -> dict:
     """Arma el snapshot. Función pura: se prueba sin red ni ficheros."""
     nudges = nudges or {}
+    fresh_at = fresh_at or {}
+    fresh_kind = fresh_kind or {}
     interesantes = sorted(
         (f for f in report.findings if f.is_problem or f.session.state.value
          not in ("COMPLETED", "FAILED")),
@@ -160,6 +198,15 @@ def construir(
                     else None
                 ),
                 "started_at": _iso(s.create_time),
+                # Cuando hablo Jules por ultima vez, y de que fue.
+                # **No** es `updateTime`: el API mueve ese campo a hoy
+                # para sesiones muertas hace meses, asi que publicarlo
+                # invitaria a confundir "el sistema la miro" con "aqui
+                # pasó algo".
+                "last_agent_at": _iso(fresh_at.get(s.name)),
+                "last_agent_kind": fresh_kind.get(s.name),
+                # Murio esperando una respuesta que nunca llego.
+                "died_asking": True if s.died_asking else None,
                 "url": s.url,
                 # Lo ultimo que dijo Jules. Solo para lo que requiere
                 # atencion: en una sesion sana es ruido, y el snapshot
@@ -318,7 +365,15 @@ class RtdbSink(Sink):
             raise MoonJulesError(
                 f"RTDB rechazo la lectura de {self.root}/{ruta}: " + self._explicar(r)
             )
-        return r.json()
+        try:
+            return r.json()
+        except ValueError as exc:
+            # Un 200 con cuerpo ilegible no deberia ocurrir, pero si
+            # ocurre no puede tumbar el ciclo: lo importante sigue
+            # siendo vigilar a Jules.
+            raise MoonJulesError(
+                f"RTDB devolvio algo que no es JSON en {self.root}/{ruta}: {exc}"
+            ) from exc
 
     def _explicar(self, r: httpx.Response) -> str:
         """Traduce la respuesta de Firebase.
@@ -392,6 +447,14 @@ class RtdbSink(Sink):
 
     async def forget_device(self, token: str) -> None:
         await self._put(f"devices/{token}", None)
+
+    async def read_settings(self) -> Ajustes:
+        """Lee los ajustes remotos. Sin ellos, gana el config local."""
+        try:
+            return Ajustes.from_rtdb(await self._get("settings"))
+        except MoonJulesError as exc:
+            log.warning("no se pudieron leer los ajustes: %s", exc)
+            return Ajustes()
 
     async def read_command(self) -> Any:
         """Lee el comando pendiente. Nunca levanta: sin comando, None."""
