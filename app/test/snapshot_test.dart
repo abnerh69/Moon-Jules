@@ -24,6 +24,9 @@ Map<String, Object?> get fallidaReal => {
       'title': '[E02-017] Validación end-to-end de la épica',
       'url': 'https://jules.google.com/session/8702125925276955183',
       'verdict': 'failed',
+      // La fecha real del fallo, no la de "actualizacion" del API.
+      'last_agent_at': '2026-05-14T09:12:03.000Z',
+      'last_agent_kind': 'sessionFailed',
     };
 
 Map<String, Object?> get vivaReal => {

@@ -55,40 +55,6 @@ MAX_SESIONES = 40
 
 
 @dataclass(frozen=True)
-class Ajustes:
-    """Lo que se puede cambiar desde el telefono sin abrir el portatil.
-
-    Vive en `{root}/settings` y **manda sobre el config local**: ese es
-    el sentido de moverlo ahi. Pero solo cuando se puede leer y el valor
-    es sensato; ante cualquier duda gana el `config.toml`, que no
-    depende de la red y siempre esta ahi.
-    """
-
-    abandon_after_h: int | None = None
-    nudge_prompt: str | None = None
-
-    @classmethod
-    def from_rtdb(cls, crudo: object) -> Ajustes:
-        """Interpreta el nodo tolerando basura. Nunca levanta."""
-        if not isinstance(crudo, dict):
-            return cls()
-        horas = crudo.get("abandon_after_h")
-        prompt = crudo.get("nudge_prompt")
-        return cls(
-            # Un valor absurdo se ignora en vez de aplicarse: cero horas
-            # frenaria toda accion, y un negativo no significa nada.
-            abandon_after_h=(
-                int(horas) if isinstance(horas, (int, float)) and horas > 0 else None
-            ),
-            nudge_prompt=(
-                prompt.strip()
-                if isinstance(prompt, str) and prompt.strip()
-                else None
-            ),
-        )
-
-
-@dataclass(frozen=True)
 class Control:
     """Quien deberia estar vigilando, segun el punto de encuentro.
 
@@ -205,8 +171,6 @@ def construir(
                 # pasó algo".
                 "last_agent_at": _iso(fresh_at.get(s.name)),
                 "last_agent_kind": fresh_kind.get(s.name),
-                # Murio esperando una respuesta que nunca llego.
-                "died_asking": True if s.died_asking else None,
                 "url": s.url,
                 # Lo ultimo que dijo Jules. Solo para lo que requiere
                 # atencion: en una sesion sana es ruido, y el snapshot
@@ -365,15 +329,7 @@ class RtdbSink(Sink):
             raise MoonJulesError(
                 f"RTDB rechazo la lectura de {self.root}/{ruta}: " + self._explicar(r)
             )
-        try:
-            return r.json()
-        except ValueError as exc:
-            # Un 200 con cuerpo ilegible no deberia ocurrir, pero si
-            # ocurre no puede tumbar el ciclo: lo importante sigue
-            # siendo vigilar a Jules.
-            raise MoonJulesError(
-                f"RTDB devolvio algo que no es JSON en {self.root}/{ruta}: {exc}"
-            ) from exc
+        return r.json()
 
     def _explicar(self, r: httpx.Response) -> str:
         """Traduce la respuesta de Firebase.
@@ -447,14 +403,6 @@ class RtdbSink(Sink):
 
     async def forget_device(self, token: str) -> None:
         await self._put(f"devices/{token}", None)
-
-    async def read_settings(self) -> Ajustes:
-        """Lee los ajustes remotos. Sin ellos, gana el config local."""
-        try:
-            return Ajustes.from_rtdb(await self._get("settings"))
-        except MoonJulesError as exc:
-            log.warning("no se pudieron leer los ajustes: %s", exc)
-            return Ajustes()
 
     async def read_command(self) -> Any:
         """Lee el comando pendiente. Nunca levanta: sin comando, None."""

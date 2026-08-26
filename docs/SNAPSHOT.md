@@ -239,32 +239,6 @@ avisaría doce veces por hora y acabarías silenciando la app.
 que se cayó es precisamente la que tendría que avisar. Esa la detecta la
 app vigilando `heartbeat_ms` contra `stale_after_s`.
 
-## Ajustes
-
-`{root}/settings` permite cambiar dos cosas desde el teléfono sin abrir
-el portátil. **Mandan sobre el `config.toml`**: ese es el sentido de
-moverlas aquí.
-
-```json
-{
-  "abandon_after_h": 48,
-  "nudge_prompt": "Completa la tarea"
-}
-```
-
-`abandon_after_h` es el plazo tras el cual Moon-Jules **deja de actuar**
-sobre una sesión que nadie ha mirado. Sigue informando; lo que no hace
-es reactivar por su cuenta trabajo de hace semanas.
-
-`nudge_prompt` es el texto que se envía al desatascar. El actual está
-medido —17 de 17 rescates respondidos entre el histórico y las pruebas
-en vivo— así que cambiarlo tira una certeza; a cambio, `calibrate` puede
-medir si el nuevo mantiene la tasa.
-
-Un valor absurdo se ignora y gana el config local: cero horas frenaría
-toda acción y un prompt vacío no diría nada. Lo mismo si el nodo no
-existe o no se puede leer.
-
 ## Comandos
 
 El teléfono puede ordenar acciones concretas. **Un comando no es

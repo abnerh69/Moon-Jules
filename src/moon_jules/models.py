@@ -133,6 +133,9 @@ class Session:
     #: Ultimo `agentMessaged`. Ahi esta lo que Jules dijo de verdad; el
     #: `reason` del API es siempre "unable to complete the task".
     last_message: str | None = None
+    #: Instante y tipo del ultimo evento del agente, para publicarlos.
+    last_agent_at: datetime | None = None
+    last_agent_kind: str | None = None
 
     @property
     def id(self) -> str:
@@ -166,7 +169,11 @@ class Session:
         )
 
     def with_details(
-        self, reason: str | None = None, message: str | None = None
+        self,
+        reason: str | None = None,
+        message: str | None = None,
+        agent_at: datetime | None = None,
+        agent_kind: str | None = None,
     ) -> Session:
         return Session(
             name=self.name,
@@ -180,6 +187,8 @@ class Session:
             pr_url=self.pr_url,
             failure_reason=reason if reason is not None else self.failure_reason,
             last_message=message if message is not None else self.last_message,
+            last_agent_at=agent_at or self.last_agent_at,
+            last_agent_kind=agent_kind or self.last_agent_kind,
         )
 
     def with_failure(self, reason: str | None) -> Session:

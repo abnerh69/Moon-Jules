@@ -58,6 +58,18 @@ class PantallaSesion extends ConsumerWidget {
                       : humano(sesion.silencio),
                 ),
                 _Dato('Lleva abierta', humano(sesion.edad)),
+                const Divider(),
+                _Dato('Empezó', fechaCorta(sesion.inicio)),
+                // La fecha del último evento del agente, no la de
+                // actualización: esa la mueve el API a hoy para
+                // sesiones muertas hace meses.
+                _Dato(
+                  'Última señal',
+                  sesion.ultimoEvento == null
+                      ? '—'
+                      : '${fechaCorta(sesion.ultimoEvento)} · '
+                          '${tipoEvento(sesion.tipoUltimoEvento)}',
+                ),
                 if (sesion.nudges > 0) ...[
                   const Divider(),
                   _Dato('Intentos de desatasco', '${sesion.nudges}'),

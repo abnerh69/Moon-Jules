@@ -287,6 +287,32 @@ String resumenTiempo(SesionVista s) {
   return '';
 }
 
+/// Fecha corta y legible: `14 may 2026`.
+String fechaCorta(DateTime? t) {
+  if (t == null) return '—';
+  const meses = [
+    'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+    'jul', 'ago', 'sep', 'oct', 'nov', 'dic',
+  ];
+  final l = t.toLocal();
+  return '${l.day} ${meses[l.month - 1]} ${l.year}';
+}
+
+/// Qué fue el último evento del agente, en castellano.
+///
+/// El nombre crudo del API —`sessionFailed`— no es para leerse en una
+/// pantalla, y traducirlo es lo que hace útil la fecha que lo acompaña.
+String tipoEvento(String? crudo) => switch (crudo) {
+      'sessionFailed' => 'la sesión falló',
+      'sessionCompleted' => 'la sesión terminó',
+      'agentMessaged' => 'Jules escribió',
+      'progressUpdated' => 'Jules avanzó',
+      'planGenerated' => 'Jules propuso un plan',
+      'planApproved' => 'se aprobó el plan',
+      null => 'sin eventos',
+      _ => crudo,
+    };
+
 /// Duración legible. Misma escala que la CLI: `144270 min` no dice nada.
 String humano(Duration? d) {
   if (d == null) return '—';

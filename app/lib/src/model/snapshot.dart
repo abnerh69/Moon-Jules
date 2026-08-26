@@ -9,7 +9,7 @@
 library;
 
 /// Versión del esquema que esta app entiende.
-const int kEsquemaSoportado = 4;
+const int kEsquemaSoportado = 5;
 
 /// Lanzada cuando el snapshot viene en una versión desconocida.
 ///
@@ -107,10 +107,13 @@ class SesionVista {
     this.silencio,
     this.edad,
     this.url,
+    this.inicioCrudo,
     this.nudges = 0,
     this.ultimoNudgeEn,
     this.ultimoNudgeDesenlace,
     this.mensajeAgente,
+    this.ultimoEvento,
+    this.tipoUltimoEvento,
   });
 
   factory SesionVista.desdeJson(Map<String, Object?> json) {
@@ -129,10 +132,14 @@ class SesionVista {
       silencio: _segundos(json['silence_s']),
       edad: _segundos(json['age_s']),
       url: leerTexto(json['url']),
+      inicioCrudo: leerTexto(json['started_at']),
       nudges: leerEntero(json['nudges']) ?? 0,
       ultimoNudgeEn: leerTexto(json['last_nudge_at']),
       ultimoNudgeDesenlace: leerTexto(json['last_nudge_outcome']),
       mensajeAgente: leerTexto(json['last_agent_message']),
+      ultimoEvento: DateTime.tryParse(leerTexto(json['last_agent_at']) ?? '')
+          ?.toUtc(),
+      tipoUltimoEvento: leerTexto(json['last_agent_kind']),
     );
   }
 
@@ -152,9 +159,26 @@ class SesionVista {
   final Duration? edad;
 
   final String? url;
+
+  /// Cuándo empezó la sesión. Inmutable, a diferencia de `updateTime`.
+  DateTime? get inicio =>
+      inicioCrudo == null ? null : DateTime.tryParse(inicioCrudo!)?.toUtc();
+
   final int nudges;
   final String? ultimoNudgeEn;
   final String? ultimoNudgeDesenlace;
+
+  /// Cuándo ocurrió el último evento **del agente**.
+  ///
+  /// No es «cuándo se actualizó»: el API mueve `updateTime` a la fecha
+  /// de hoy para sesiones muertas hace meses, y confundir «el sistema la
+  /// miró» con «aquí pasó algo» ya costó dos entregas.
+  final String? inicioCrudo;
+
+  final DateTime? ultimoEvento;
+
+  /// De qué fue: `sessionFailed`, `agentMessaged`, `progressUpdated`…
+  final String? tipoUltimoEvento;
 
   /// Lo último que dijo Jules, si dijo algo.
   ///

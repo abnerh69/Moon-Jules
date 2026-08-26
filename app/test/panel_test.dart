@@ -364,4 +364,34 @@ void main() {
       expect(corregida.salud, SaludInstancia.vigilando);
     });
   });
+
+  group('fechas', () {
+    test('se distingue cuándo empezó de cuándo fue la última señal', () {
+      // El API mueve `updateTime` a hoy para sesiones muertas hace
+      // meses. Publicar eso como "actualizada" invitaría a la misma
+      // confusión que costó dos entregas.
+      final s = SesionVista.desdeJson(fallidaReal);
+      expect(fechaCorta(s.inicio), '14 may 2026');
+      expect(fechaCorta(s.ultimoEvento), '14 may 2026');
+      expect(s.tipoUltimoEvento, 'sessionFailed');
+    });
+
+    test('el tipo de evento se lee en castellano', () {
+      // `sessionFailed` no es para leerse en una pantalla.
+      expect(tipoEvento('sessionFailed'), 'la sesión falló');
+      expect(tipoEvento('agentMessaged'), 'Jules escribió');
+      expect(tipoEvento(null), 'sin eventos');
+    });
+
+    test('un tipo desconocido se muestra tal cual, sin romper nada', () {
+      expect(tipoEvento('algoNuevo'), 'algoNuevo');
+    });
+
+    test('sin fecha se muestra una raya, no una fecha inventada', () {
+      expect(fechaCorta(null), '—');
+      final pelada = SesionVista.desdeJson({'id': 'x', 'repo': 'a/b'});
+      expect(pelada.ultimoEvento, isNull);
+      expect(pelada.inicio, isNull);
+    });
+  });
 }
