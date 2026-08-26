@@ -111,7 +111,7 @@ dispositivo dejaría la ventana abierta indefinidamente. Una marca en el
 futuro se trata como vencida.
 
 Todo lo que hubo que configurar en `app/android/` está en
-`../docs/ANDROID.md`: qué se tocó, por qué, y qué falla sin cada cosa.
+`../docs/CONFIGURACION-NATIVA-Y-NOTIFICACIONES.md`: qué se tocó, por qué, y qué falla sin cada cosa.
 Los scripts `apply-NN.sh` se autoborran, así que ese documento es la
 única memoria del motivo.
 
@@ -187,7 +187,7 @@ snapshot, así que basta con `fcm = true` en `[notify]` del lado del Mac.
 
 ### El canal de notificaciones
 
-Explicado a fondo, con el diagnóstico completo, en `../docs/ANDROID.md`.
+Explicado a fondo, con el diagnóstico completo, en `../docs/CONFIGURACION-NATIVA-Y-NOTIFICACIONES.md`.
 
 Desde Android 8 **toda notificación necesita un canal**, y con la app
 cerrada quien la muestra es el SDK nativo de Firebase, no el código

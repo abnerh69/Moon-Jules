@@ -1,4 +1,4 @@
-# Android: configuración nativa y notificaciones
+# Configuración nativa de Android y diagnóstico de notificaciones
 
 ```meta
 Versión:  1.0
