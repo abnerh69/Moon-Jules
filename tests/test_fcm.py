@@ -332,3 +332,60 @@ def test_si_ninguna_via_entrega_se_deja_constancia(tmp_path, caplog):
         with caplog.at_level("WARNING"):
             assert n.notify_findings([hallazgo()], NOW) == 0
     assert any("ninguna via entrego" in r.message for r in caplog.records)
+
+
+# --------------------------------------------------------------------
+# el cableado, no solo las piezas
+# --------------------------------------------------------------------
+
+
+def _sink_con_dispositivos(tokens: list[str]):
+    """RtdbSink que responde con los dispositivos dados."""
+    import httpx
+
+    from moon_jules.gauth import StaticTokenAuth
+    from moon_jules.publish import RtdbSink
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.path.endswith("/devices.json"):
+            return httpx.Response(200, json={t: True for t in tokens})
+        return httpx.Response(200, json={})
+
+    return RtdbSink(
+        "https://x.firebaseio.com", "moonjules",
+        auth=StaticTokenAuth("t"),
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+
+
+def test_el_push_recibe_tokens_aunque_no_sea_la_primera_via(tmp_path):
+    """Encontrado en campo (entrega 23 a 33).
+
+    `refrescar_dispositivos` miraba `notifier.backend`, que devuelve el
+    primero de la lista. Con el aviso local en primera posición, el
+    backend de FCM nunca recibía tokens y `send` salía en silencio: las
+    notificaciones llegaban al portátil y ninguna al móvil, sin una sola
+    línea de log que lo explicara.
+    """
+    import asyncio
+
+    from moon_jules.cli import refrescar_dispositivos
+    from moon_jules.notify import NullBackend
+
+    local = NullBackend()
+    push = backend(ok, [])
+    sink = _sink_con_dispositivos(["tok-movil"])
+    with Store(tmp_path / "s.db") as store:
+        n = Notifier(store, enabled=True, backends=[local, push])
+        asyncio.run(refrescar_dispositivos(sink, n))
+    asyncio.run(sink.aclose())
+    assert push._tokens == ["tok-movil"], "el push se quedó sin destinatarios"
+
+
+def test_sin_dispositivos_queda_constancia(tmp_path, caplog):
+    """«No hay a quién enviar» es justo lo que hay que poder leer cuando
+    el push no llega. Estaba en debug, invisible en la práctica."""
+    b = backend(ok, [])
+    with caplog.at_level("INFO"):
+        assert b.send("t", "c") is False
+    assert any("ningun dispositivo" in r.message for r in caplog.records)

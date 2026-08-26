@@ -282,6 +282,20 @@ fichero después. Recoge las ocho cosas configuradas en `app/android/`,
 qué falla sin cada una, y el árbol de diagnóstico de «no llegan las
 notificaciones» en el orden en que salió caro descubrirlo.
 
+### E45 — El push se quedaba sin destinatarios *(entrega 34)*
+`refrescar_dispositivos` miraba `notifier.backend`, que devuelve el
+primero de la lista. Con el aviso local en primera posición —lo normal—
+el backend de FCM nunca recibía tokens y `send` salía en silencio por
+una rama en `debug`. Síntoma: notificaciones en el escritorio, ninguna
+en el móvil, y ni una línea de log que lo explicara. Introducido en la
+entrega 23 al pasar de un backend a varios; los tests no lo vieron
+porque probaban el `Notifier` con backends puestos a mano, nunca el
+cableado real.
+
+Incluye un aviso en `doctor` cuando el servicio corre una versión
+distinta de la instalada: no reiniciar tras aplicar una entrega costó
+varias vueltas persiguiendo fallos ya arreglados.
+
 ## Siguiente ola
 
 ## Retirado

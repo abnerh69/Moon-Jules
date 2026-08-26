@@ -523,3 +523,22 @@ def test_el_cliente_expone_si_la_mascara_sigue_activa():
     run(c.activities("sessions/1"))
     assert c.partial_response is False
     run(c.aclose())
+
+
+def test_doctor_puede_saber_que_version_corre_el_servicio(tmp_path):
+    """El servicio lee el código una vez, al arrancar. Aplicar una
+    entrega y no reiniciar deja una versión vieja en marcha sin que nada
+    lo delate: eso costó varias vueltas persiguiendo fallos ya
+    arreglados."""
+    db = tmp_path / "state.db"
+    with Store(db) as store:
+        assert store.db.execute(
+            "SELECT value FROM meta WHERE key='version_en_marcha'"
+        ).fetchone() is None
+        store.db.execute(
+            "INSERT INTO meta(key, value) VALUES ('version_en_marcha', '0.15.0')"
+        )
+    with Store(db) as store:
+        assert store.db.execute(
+            "SELECT value FROM meta WHERE key='version_en_marcha'"
+        ).fetchone()["value"] == "0.15.0"

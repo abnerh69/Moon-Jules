@@ -72,9 +72,18 @@ silueta monocroma de la barra, en las cinco densidades.
 En orden, del extremo más barato de comprobar al más caro. Cada paso
 descarta el anterior.
 
+**0. ¿Corre el servicio la versión que crees?** `moon-jules doctor` avisa
+si no. El servicio lee el código y el config **una sola vez, al
+arrancar**: aplicar una entrega sin reiniciar deja una versión vieja en
+marcha persiguiendo fallos ya arreglados. `moon-jules service install`
+reinicia.
+
 **1. ¿Se envió?** En `~/.local/state/moon-jules/logs/moon-jules.log`
-busca `push entregado a N de M dispositivo(s)`. Si `M` es cero, no hay
-dispositivos registrados y el problema está en la app, no en el envío.
+busca `push entregado a N de M dispositivo(s)`. Si `M` es cero, o si
+aparece `push omitido: ningun dispositivo registrado`, el backend no
+tiene destinatarios. Y si **no aparece ninguna de las dos líneas** pero
+sí llegan avisos al escritorio, el envío por FCM ni siquiera se
+intentó.
 
 **2. ¿Hay token?** En RTDB, `moonjules/devices/` debe existir con al
 menos una entrada. Si el nodo no existe, la app no llegó a registrarse

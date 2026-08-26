@@ -465,6 +465,18 @@ async def cmd_doctor(cfg: Config, args: argparse.Namespace) -> int:
               f"{'  | relevo activo' if cfg.relay.enabled else ''}")
     with Store(cfg.state_path) as store:
         pausas = store.active_pauses(now())
+        # El servicio lee el config y el codigo una sola vez, al
+        # arrancar. Aplicar una entrega y no reiniciar deja corriendo
+        # una version vieja sin que nada lo delate, y eso ya costo
+        # varias vueltas persiguiendo fallos ya arreglados.
+        fila = store.db.execute(
+            "SELECT value FROM meta WHERE key = 'version_en_marcha'"
+        ).fetchone()
+        en_marcha = fila["value"] if fila else None
+    if en_marcha and en_marcha != __version__:
+        print(f"AVISO       el servicio corre {en_marcha} y tienes "
+              f"{__version__} instalada.\n"
+              f"            Reinicia con: moon-jules service install")
     if pausas:
         for scope, row in pausas.items():
             donde = "global" if scope == GLOBAL_SCOPE else scope
@@ -628,6 +640,10 @@ async def cmd_unack(cfg: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def cfg_root_de(sink: RtdbSink) -> str:
+    return sink.root
+
+
 def crear_backend_push(cfg: Config, sink: Sink | None) -> FcmBackend | None:
     """Backend de notificaciones push, si esta configurado.
 
@@ -653,13 +669,26 @@ async def refrescar_dispositivos(sink: Sink | None, notifier: Notifier) -> None:
     Se releen en cada ciclo en vez de cachearse: son uno o dos, y un
     telefono recien instalado debe funcionar sin reiniciar el servicio.
     """
-    backend = notifier.backend
-    if not isinstance(backend, FcmBackend) or not isinstance(sink, RtdbSink):
+    # Se buscan TODAS las vias de push, no la primera de la lista. Mirar
+    # solo `notifier.backend` funcionaba con un unico backend y dejo de
+    # hacerlo al admitir varios: con el aviso local en primera posicion,
+    # el de FCM nunca recibia tokens y `send` salia en silencio.
+    push = [b for b in notifier.backends if isinstance(b, FcmBackend)]
+    if not push or not isinstance(sink, RtdbSink):
         return
-    for token in backend.retirados:
-        with contextlib.suppress(MoonJulesError):
-            await sink.forget_device(token)
-    backend.set_tokens(await sink.read_devices())
+    for backend in push:
+        for token in backend.retirados:
+            with contextlib.suppress(MoonJulesError):
+                await sink.forget_device(token)
+    tokens = await sink.read_devices()
+    if not tokens:
+        log.warning(
+            "notify.fcm activo pero no hay dispositivos registrados en "
+            "%s/devices: la app aun no ha guardado su token",
+            cfg_root_de(sink),
+        )
+    for backend in push:
+        backend.set_tokens(tokens)
 
 
 def crear_sink(cfg: Config) -> Sink | None:
@@ -1095,6 +1124,13 @@ async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
                     enabled=cfg.notify.enabled,
                     cooldown_s=cfg.notify.cooldown_s,
                     backends=vias or [NullBackend()],
+                )
+                # Se anota que version esta realmente en marcha, para
+                # que `doctor` pueda avisar si quedo una vieja.
+                store.db.execute(
+                    "INSERT INTO meta(key, value) VALUES ('version_en_marcha', ?) "
+                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    (__version__,),
                 )
                 log.info(
                     "watch iniciado: intervalo=%ss N=%ss modo=%s notificaciones=%s",

@@ -81,7 +81,10 @@ class FcmBackend(Backend):
         """
         tokens = self._tokens
         if not tokens:
-            log.debug("no hay dispositivos registrados")
+            # A nivel INFO y no debug: "no hay a quien enviar" es
+            # justo lo que hay que poder leer cuando el push no llega,
+            # y en debug no se ve con la configuracion normal.
+            log.info("push omitido: ningun dispositivo registrado")
             return False
         entregados = 0
         for token in tokens:
