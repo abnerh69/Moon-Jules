@@ -237,6 +237,15 @@ dice: sin push solo hay alertas con la app abierta. Nombre visible
 «Moon Jules» en vez del identificador del paquete, e icono propio
 generado por `tools/generar_iconos.py`.
 
+### E40 — Acceso sin credenciales en el binario *(entrega 28)*
+Con `--dart-define` el correo y la contraseña quedaban compilados dentro
+del APK. Ahora se teclean una vez y viven en el Keystore. Ventana
+deslizante de siete días que se renueva al entrar; al vencer se cierra
+la sesión de Firebase de verdad y se puede desbloquear con biometría,
+que **desbloquea** la contraseña guardada en vez de sustituirla. Una
+marca de acceso en el futuro se trata como vencida: sin eso, atrasar el
+reloj del dispositivo abriría la ventana para siempre.
+
 ## Siguiente ola
 
 ## Retirado

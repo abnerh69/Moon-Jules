@@ -72,22 +72,37 @@ con una restricción de SDK estable.
 
 ## Ejecutar
 
-Las credenciales **no van en el código**: se inyectan al compilar, mismo
-criterio que la ADR-004 del lado de Python.
-
 ```bash
-flutter run \
-  --dart-define=MJ_EMAIL=tu@correo \
-  --dart-define=MJ_PASSWORD=tu-clave
+flutter build apk --release && flutter install --release
+# o, para desarrollo:
+flutter run
 ```
 
-**No sirve una cuenta anónima.** Las reglas exigen el UID del arquitecto
-y el anónimo cambia en cada instalación, así que Firebase rechazaría
-cada lectura. Usa la cuenta de correo creada en Firebase Authentication,
-y comprueba que su UID sea el que aparece en `../docs/RTDB.md`.
+Sin `--dart-define`. La contraseña se teclea **una vez** en la pantalla
+de acceso y vive en el almacén seguro del sistema —Keystore en Android—.
+Antes se inyectaba al compilar y quedaba dentro del APK, recuperable por
+cualquiera que lo tuviera.
 
-Si te cansa teclearlo, `.vscode/launch.json` o un script local admiten
-los mismos `--dart-define`; ninguno de los dos va al repositorio.
+**No sirve una cuenta anónima.** Las reglas exigen el UID del arquitecto
+y el anónimo cambia en cada instalación. Usa la cuenta creada en Firebase
+Authentication y comprueba que su UID sea el de `../docs/RTDB.md`.
+
+### Cuánto dura el acceso
+
+Siete días, con **ventana deslizante**: entrar a los tres días empuja el
+vencimiento otros siete desde ese momento, así que usándola con
+regularidad no vuelves a teclear nada.
+
+Al vencer se cierra la sesión de Firebase **de verdad**, no se tapa la
+pantalla. Volver a entrar exige red y una validación real. Se puede
+desbloquear con huella o cara: la biometría no sustituye a la
+contraseña, la **desbloquea** del almacén para poder autenticarse contra
+el servidor.
+
+La marca del último acceso vive en el almacén seguro y no en
+`shared_preferences`, que es texto plano: si no, atrasar el reloj del
+dispositivo dejaría la ventana abierta indefinidamente. Una marca en el
+futuro se trata como vencida.
 
 ### En macOS
 

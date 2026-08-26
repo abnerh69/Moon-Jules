@@ -237,7 +237,7 @@ Pendiente: vigilancia del contrato del API y verificación de
 
 `app/` contiene el panel que consume lo publicado. Su capa de datos y su
 lógica de presentación son Dart puro y se prueban sin emulador: `cd app
-&& flutter test` (74 tests). Ver `app/README.md`.
+&& flutter test` (90 tests). Ver `app/README.md`.
 
 ## Documentación
 
