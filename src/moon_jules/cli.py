@@ -61,6 +61,38 @@ TERMINAL = {SessionState.COMPLETED, SessionState.FAILED}
 
 log = get_logger("cli")
 
+
+def _murio_preguntando(acts: list) -> bool:
+    """La sesion fallo con una pregunta del agente sin responder.
+
+    Es diagnosticamente distinto de fallar por dependencias, y hasta
+    ahora todas las fallidas se veian iguales. El caso medido: Jules
+    pregunto a las 03:52:06 y se rindio a las 03:52:38 — **treinta y dos
+    segundos**. Ninguna ventana de polling llega a tiempo a eso, asi que
+    el valor no esta en correr mas sino en contarlo despues.
+
+    Se busca hacia atras desde el final: si antes del `sessionFailed`
+    hubo un `agentMessaged` y nadie contesto entre medias, murio
+    preguntando.
+    """
+    orden = sorted(
+        (a for a in acts if a.create_time), key=lambda a: a.create_time
+    )
+    visto_fallo = False
+    for a in reversed(orden):
+        if a.kind == "sessionFailed":
+            visto_fallo = True
+            continue
+        if not visto_fallo:
+            continue
+        if a.kind == "userMessaged":
+            return False  # alguien contesto antes de que se rindiera
+        if a.kind == "agentMessaged":
+            return True
+        if a.kind in ("progressUpdated", "planGenerated", "planApproved"):
+            return False  # siguio trabajando tras preguntar
+    return False
+
 #: Se guarda cuando ya se busco la razon de un fallo y no habia ninguna.
 #: Sin este centinela, una sesion FAILED sin actividad `sessionFailed`
 #: se re-consultaria en cada ciclo para siempre: en el enjambre real,
@@ -153,6 +185,8 @@ class Monitor:
     _mensajes: dict[str, str] = field(default_factory=dict)
     #: Instante real del ultimo evento del agente, por sesion.
     _eventos: dict[str, datetime] = field(default_factory=dict)
+    #: Sesiones que fallaron con una pregunta sin responder.
+    _preguntando: dict[str, bool] = field(default_factory=dict)
 
     async def cycle(
         self,
@@ -194,7 +228,8 @@ class Monitor:
                 s = s.with_details(message=nuevo or mensajes.get(s.name))
             if s.state is SessionState.FAILED:
                 s = s.with_details(
-                    reason=conocidas.get(s.name) or self._reasons.get(s.name)
+                    reason=conocidas.get(s.name) or self._reasons.get(s.name),
+                    died_asking=self._preguntando.get(s.name),
                 )
             src = self.config.for_source(s.source)
             if standby or (pausas and (GLOBAL_SCOPE in pausas or s.source in pausas)):
@@ -405,6 +440,7 @@ class Monitor:
         """
         acts = await self.client.activities(s.name, limit=None)
         self._recordar_mensaje(s.name, acts)
+        self._preguntando[s.name] = _murio_preguntando(acts)
         for a in reversed(acts):
             if a.kind == "sessionFailed":
                 if a.create_time:

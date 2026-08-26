@@ -136,6 +136,8 @@ class Session:
     #: Instante y tipo del ultimo evento del agente, para publicarlos.
     last_agent_at: datetime | None = None
     last_agent_kind: str | None = None
+    #: Fallo con una pregunta del agente sin responder.
+    died_asking: bool = False
 
     @property
     def id(self) -> str:
@@ -174,6 +176,7 @@ class Session:
         message: str | None = None,
         agent_at: datetime | None = None,
         agent_kind: str | None = None,
+        died_asking: bool | None = None,
     ) -> Session:
         return Session(
             name=self.name,
@@ -189,6 +192,9 @@ class Session:
             last_message=message if message is not None else self.last_message,
             last_agent_at=agent_at or self.last_agent_at,
             last_agent_kind=agent_kind or self.last_agent_kind,
+            died_asking=(
+                died_asking if died_asking is not None else self.died_asking
+            ),
         )
 
     def with_failure(self, reason: str | None) -> Session:

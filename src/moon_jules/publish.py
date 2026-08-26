@@ -171,6 +171,8 @@ def construir(
                 # pasó algo".
                 "last_agent_at": _iso(fresh_at.get(s.name)),
                 "last_agent_kind": fresh_kind.get(s.name),
+                # Murio esperando una respuesta que nunca llego.
+                "died_asking": True if s.died_asking else None,
                 "url": s.url,
                 # Lo ultimo que dijo Jules. Solo para lo que requiere
                 # atencion: en una sesion sana es ruido, y el snapshot

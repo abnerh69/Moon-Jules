@@ -144,7 +144,7 @@ def test_sesiones_terminales_no_gastan_requests(tmp_path):
     assert report.findings[0].verdict is Verdict.DONE
 
 
-def test_failed_recupera_la_razon_y_no_recibe_escritura(tmp_path):
+def test_failed_recupera_la_razon_y_se_reactiva(tmp_path):
     s = sess(SessionState.FAILED, update_time=ago(minutes=5))
     client = FakeJules(
         [s],
@@ -154,7 +154,8 @@ def test_failed_recupera_la_razon_y_no_recibe_escritura(tmp_path):
     with Store(cfg.state_path) as store:
         report = run(Monitor(client, cfg, store).cycle(execute=True))
     assert "Unable to install deps" in report.findings[0].reason
-    assert client.sent == []
+    # Verificado contra el API: una fallida revive con el prompt.
+    assert client.sent == [(s.name, "Completa la tarea")]
 
 
 def test_presupuesto_de_nudges_frena_la_insistencia(tmp_path):
@@ -185,3 +186,53 @@ def test_multiples_sesiones_se_ordenan_por_atencion(tmp_path):
         report = run(Monitor(client, cfg, store).cycle())
     assert len(report.attention) == 1
     assert report.attention[0].verdict is Verdict.PAUSED_STALE
+
+
+# --------------------------------------------------------------------
+# murió preguntando
+# --------------------------------------------------------------------
+
+
+def test_reconoce_una_sesion_que_murio_preguntando():
+    """El caso medido: Jules preguntó a las 03:52:06 y se rindió a las
+    03:52:38. Treinta y dos segundos. Ninguna ventana de polling llega a
+    tiempo a eso, así que el valor está en contarlo después."""
+    from moon_jules.cli import _murio_preguntando
+
+    acts = [
+        act("progressUpdated", "agent", ago(minutes=10)),
+        act("agentMessaged", "agent", ago(minutes=5)),
+        act("sessionFailed", "agent", ago(minutes=4)),
+    ]
+    assert _murio_preguntando(acts) is True
+
+
+def test_si_alguien_contesto_no_murio_preguntando():
+    from moon_jules.cli import _murio_preguntando
+
+    acts = [
+        act("agentMessaged", "agent", ago(minutes=10)),
+        act("userMessaged", "user", ago(minutes=9)),
+        act("sessionFailed", "agent", ago(minutes=4)),
+    ]
+    assert _murio_preguntando(acts) is False
+
+
+def test_si_siguio_trabajando_tras_preguntar_tampoco():
+    """Preguntó, nadie contestó, pero continuó por su cuenta y falló
+    después por otra cosa."""
+    from moon_jules.cli import _murio_preguntando
+
+    acts = [
+        act("agentMessaged", "agent", ago(minutes=20)),
+        act("progressUpdated", "agent", ago(minutes=10)),
+        act("sessionFailed", "agent", ago(minutes=4)),
+    ]
+    assert _murio_preguntando(acts) is False
+
+
+def test_una_sesion_sin_fallo_no_murio_de_nada():
+    from moon_jules.cli import _murio_preguntando
+
+    assert _murio_preguntando([act("agentMessaged", "agent", ago(minutes=5))]) is False
+    assert _murio_preguntando([]) is False

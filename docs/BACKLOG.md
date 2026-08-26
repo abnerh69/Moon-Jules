@@ -332,6 +332,17 @@ actividad `sessionFailed`, que se leía para sacar la razón y se tiraba.
 Esquema 4 → 5. El detalle muestra ahora tres fechas rotuladas y traduce
 el tipo de evento: `sessionFailed` no es para leerse en una pantalla.
 
+### E49 — Las fallidas se reactivan *(entrega 38)*
+La razón de ser del proyecto, ausente hasta ahora. Nueve de las diez
+sesiones problemáticas del enjambre están en `FAILED`, y la escalera las
+excluía por una suposición nunca comprobada. Ahora reciben un intento;
+si no reviven, se alerta y no se insiste.
+
+Incluye el veredicto `failed_asking` para las que mueren con una
+pregunta sin responder, verificado contra la sesión real de
+`ppp-n-kits`. La ventana para contestar a tiempo era de **32 segundos**,
+así que el valor está en el diagnóstico, no en la velocidad.
+
 ## Siguiente ola
 
 ## Retirado
@@ -357,11 +368,12 @@ Chequeo periódico de la `revision` del discovery doc. Si cambia, avisa.
 Es la mitigación del riesgo 1 del Inception (API en alpha).
 *Depende de: E01.*
 
-### E11 — Verificación de `sendMessage` sobre sesión terminal
-La única pregunta que el Spike 01 dejó abierta. Requiere una sesión
-prescindible y decisión del arquitecto. Si el API lo acepta, habilita
-el reintento automático de sesiones `FAILED` en `full_auto`.
-*Bloqueada por: decisión del arquitecto.*
+### E11 — Verificación de `sendMessage` sobre sesión terminal *(entrega 38)*
+**Resuelta, y la respuesta era que sí.** El API acepta escribir sobre
+una sesión `FAILED` y la sesión revive. Estuvo bloqueada veinte
+entregas, y mientras tanto la suposición prudente se fue repitiendo
+hasta convertirse en regla implementada, probada y documentada. Ver la
+enmienda de ADR-002.
 
 ### E12 — Arranque persistente *(entrega 17)*
 `moon-jules service install` genera e instala el agente de usuario:
