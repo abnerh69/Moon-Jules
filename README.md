@@ -247,9 +247,12 @@ tools/desplegar.sh --limpio     # desinstala la app antes de instalar
 ```
 
 Activa el entorno virtual si hace falta —el servicio queda apuntando a
-un ejecutable concreto y para siempre—, comprueba que haya un Android
-conectado antes de compilar, y siempre instala **release**, que es lo
-que queda en el teléfono al desconectar el cable.
+un ejecutable concreto y para siempre—, **elige el Android por su
+identificador** entre los dispositivos disponibles, y siempre instala
+**release**, que es lo que queda en el teléfono al desconectar el cable.
+
+Lo de elegir importa: con macOS o Chrome habilitados hay varios
+dispositivos y `flutter install` aborta pidiendo `-d`.
 
 `--limpio` solo hace falta cuando cambia el canal de notificaciones:
 Android no modifica uno ya creado. Borra las credenciales guardadas.

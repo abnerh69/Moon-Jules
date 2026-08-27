@@ -56,49 +56,26 @@ if [ "$QUE" != "servicio" ]; then
     exit 0
   fi
 
-  # Se elige el Android por su identificador, no por si aparece en la
-  # lista. Con macOS o Chrome habilitados hay varios dispositivos y
-  # `flutter install` aborta pidiendo `-d`; comprobar solo que exista
-  # uno hacia fallar el paso siguiente.
-  DISPOSITIVO="$(flutter devices --machine 2>/dev/null | python3 -c '
-import json, sys
-try:
-    ds = json.load(sys.stdin)
-except ValueError:
-    sys.exit(0)
-for d in ds:
-    if str(d.get("targetPlatform", "")).startswith("android"):
-        print(d["id"]); break
-' || true)"
-
-  if [ -z "$DISPOSITIVO" ]; then
+  # Sin dispositivo no hay nada que instalar, y es mejor decirlo antes
+  # de gastar dos minutos compilando.
+  if ! flutter devices 2>/dev/null | grep -qi android; then
     aviso "no veo ningun Android conectado."
     aviso "Conectalo con depuracion USB activada y repite."
-    aviso "Lo que si veo:"
-    flutter devices --machine 2>/dev/null | python3 -c '
-import json, sys
-try:
-    for d in json.load(sys.stdin):
-        print("  %s (%s)" % (d.get("name"), d.get("targetPlatform")))
-except ValueError:
-    print("  (no se pudo leer la lista)")
-' || true
     exit 1
   fi
-  echo "dispositivo: $DISPOSITIVO"
 
   cd app
 
   if [ "$LIMPIO" = 1 ]; then
     aviso "desinstalando la version anterior (se pierden las credenciales)"
-    adb -s "$DISPOSITIVO" uninstall org.ashware.moonjules >/dev/null 2>&1 || true
+    adb uninstall org.ashware.moonjules >/dev/null 2>&1 || true
     flutter clean >/dev/null
   fi
 
   # Release, no debug: es lo que queda instalado de verdad en el
   # telefono cuando se desconecta el cable.
   flutter build apk --release
-  flutter install --release -d "$DISPOSITIVO"
+  flutter install --release
 fi
 
 titulo "listo"
