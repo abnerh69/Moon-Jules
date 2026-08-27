@@ -354,6 +354,13 @@ Incluye `{root}/settings` en RTDB con el plazo y el prompt, con
 precedencia sobre el config local; un valor absurdo o ilegible se ignora
 y gana el `config.toml`, que no depende de la red.
 
+### E51 — Un solo paso para desplegar *(entrega 40)*
+`tools/desplegar.sh`. Activa el entorno virtual antes de tocar el
+servicio, comprueba que haya un Android conectado antes de gastar dos
+minutos compilando, e instala release y no debug. `--limpio` para cuando
+cambie el canal de notificaciones, con el aviso de que borra las
+credenciales guardadas.
+
 ## Siguiente ola
 
 ## Retirado

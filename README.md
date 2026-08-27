@@ -237,6 +237,23 @@ Publica su estado para lectores externos (`docs/SNAPSHOT.md`).
 Pendiente: vigilancia del contrato del API y verificación de
 `sendMessage` sobre sesión terminal. Ver `docs/BACKLOG.md`.
 
+## Desplegar
+
+```bash
+tools/desplegar.sh              # reinicia el servicio y reinstala la app
+tools/desplegar.sh servicio     # solo el servicio
+tools/desplegar.sh app          # solo la app
+tools/desplegar.sh --limpio     # desinstala la app antes de instalar
+```
+
+Activa el entorno virtual si hace falta —el servicio queda apuntando a
+un ejecutable concreto y para siempre—, comprueba que haya un Android
+conectado antes de compilar, y siempre instala **release**, que es lo
+que queda en el teléfono al desconectar el cable.
+
+`--limpio` solo hace falta cuando cambia el canal de notificaciones:
+Android no modifica uno ya creado. Borra las credenciales guardadas.
+
 ## La app
 
 `app/` contiene el panel que consume lo publicado. Su capa de datos y su
