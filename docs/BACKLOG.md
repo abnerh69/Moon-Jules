@@ -361,6 +361,21 @@ minutos compilando, e instala release y no debug. `--limpio` para cuando
 cambie el canal de notificaciones, con el aviso de que borra las
 credenciales guardadas.
 
+### E52 — Resumen por repositorio *(entrega 42)*
+Primera mitad de la vista por proyecto. El snapshot publica ahora un
+resumen por source: en qué trabaja cada repositorio, cuántas sesiones
+tiene vivas y cuántas requieren atención. Se construye sobre todos los
+hallazgos, porque `sessions[]` solo lleva lo problemático y lo activo, y
+parte del listado de sources del API para que **los repositorios sin
+ninguna sesión también aparezcan** — posible cadena rota.
+
+Cuesta una petición más, solo en los ciclos completos. Esquema 5 → 6.
+
+### E53 — La pantalla por proyecto *(siguiente)*
+Segunda mitad: lista de repositorios con su tarea actual, detalle por
+repositorio, y el archivado como filtro de vista que **no altera el
+monitoreo**. Archivar vive en la app, no en Moon-Jules.
+
 ## Siguiente ola
 
 ## Retirado

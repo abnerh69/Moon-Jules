@@ -46,7 +46,7 @@ log = get_logger("publish")
 #: Versión del esquema. Se sube al añadir campos; se sube de mayor al
 #: quitar o cambiar el significado de uno. La app debe rechazar lo que
 #: no entienda en vez de interpretarlo a medias.
-SCHEMA = 5
+SCHEMA = 6
 
 #: Cuántas sesiones caben en el snapshot. Con el tope de 15 concurrentes
 #: del plan, 40 deja sitio de sobra para lo activo más lo que requiere
@@ -257,7 +257,80 @@ def construir(
             "paused": report.paused or None,
         },
         "sessions": sesiones,
+        "sources": _sources(report, ahora),
     })
+
+
+#: Tope de repositorios en el snapshot. Con 24 sources hay de sobra, y
+#: acota lo que se sube en cada ciclo si el enjambre crece.
+MAX_SOURCES = 60
+
+
+def _sources(report: Report, ahora: datetime) -> list[dict]:
+    """Un resumen por repositorio, para la vista por proyecto.
+
+    Se construye sobre **todos** los hallazgos, no sobre las sesiones
+    que viajan en `sessions[]`: un repositorio cuyo trabajo va bien no
+    tiene sesiones publicadas y aun asi debe aparecer. Y se parte de la
+    lista de sources del API, para que los que no tienen ninguna sesion
+    —posible cadena rota— tampoco se pierdan.
+    """
+    por_source: dict[str, list] = {}
+    for f in report.findings:
+        if f.session.source:
+            por_source.setdefault(f.session.source, []).append(f)
+
+    conocidos = {s.get("name"): s for s in report.sources if s.get("name")}
+    salida = []
+    for nombre in sorted(set(conocidos) | set(por_source)):
+        hallazgos = por_source.get(nombre, [])
+        vivas = [
+            f for f in hallazgos
+            if f.session.state.value not in ("COMPLETED", "FAILED")
+        ]
+        atencion = [f for f in hallazgos if f.needs_attention]
+        # La que se esta trabajando ahora; si no hay ninguna viva, la
+        # que mas atencion requiere, que es lo siguiente que importa.
+        actual = None
+        if vivas:
+            actual = max(vivas, key=lambda f: f.session.create_time or ahora)
+        elif atencion:
+            actual = atencion[0]
+        senales = [
+            f.session.last_agent_at for f in hallazgos if f.session.last_agent_at
+        ]
+        salida.append(
+            {
+                "id": nombre,
+                "repo": _repo_de(conocidos.get(nombre), nombre),
+                "active": len(vivas),
+                "attention": len(atencion),
+                "sessions": len(hallazgos),
+                "last_signal_at": _iso(max(senales)) if senales else None,
+                "current": (
+                    {
+                        "id": actual.session.id,
+                        "title": actual.session.title,
+                        "state": actual.session.state.value,
+                        "verdict": actual.verdict.value,
+                    }
+                    if actual
+                    else None
+                ),
+            }
+        )
+    # Lo que requiere atencion primero, luego lo que trabaja, y al final
+    # lo callado: el mismo criterio que en la lista de sesiones.
+    salida.sort(key=lambda s: (-s["attention"], -s["active"], s["repo"]))
+    return salida[:MAX_SOURCES]
+
+
+def _repo_de(source: dict | None, nombre: str) -> str:
+    """`owner/repo` legible, con el nombre del API como respaldo."""
+    gh = (source or {}).get("githubRepo") or {}
+    if gh.get("owner") and gh.get("repo"):
+        return f"{gh['owner']}/{gh['repo']}"
+    return nombre.removeprefix("sources/").removeprefix("github/")
 
 
 # ---------- destinos ----------

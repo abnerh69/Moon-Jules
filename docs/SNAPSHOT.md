@@ -1,12 +1,13 @@
 # Contrato del snapshot
 
 ```meta
-Esquema:  5
-Desde:    Moon-Jules v0.20.0 (entrega 37)
+Esquema:  6
+Desde:    Moon-Jules v0.23.0 (entrega 42)
 Historia: 1 — entrega 13. 2 — añade `control` y `instance.role`.
           3 — añade `instance.heartbeat_ms` y el canal de comandos.
           4 — añade `sessions[].last_agent_message`.
           5 — añade `last_agent_at` y `last_agent_kind`.
+          6 — añade `sources[]`, resumen por repositorio.
 Estado:   Estable
 ```
 
@@ -334,6 +335,50 @@ siguiente.
 Los verbos que cruzan la NO list no existen y nunca existirán por aquí:
 crear sesiones o asignar tareas es trabajo de la GitHub Action, y
 archivar o borrar es escritura sobre el workspace del arquitecto.
+
+## `sources` — la vista por proyecto
+
+Un resumen por repositorio, para poder ver **en qué está trabajando cada
+proyecto** aunque todo vaya bien.
+
+```json
+{
+  "id": "sources/github/abnerh69/ppp-n-kits",
+  "repo": "abnerh69/ppp-n-kits",
+  "active": 1,
+  "attention": 0,
+  "sessions": 3,
+  "last_signal_at": "2026-08-26T18:30:00Z",
+  "current": {
+    "id": "4954617217501385202",
+    "title": "[E02-017] Validación end-to-end de la épica",
+    "state": "IN_PROGRESS",
+    "verdict": "healthy"
+  }
+}
+```
+
+Se construye sobre **todos** los hallazgos, no sobre las sesiones que
+viajan en `sessions[]`: un repositorio cuyo trabajo va perfecto no tiene
+sesiones publicadas y aun así debe aparecer. Y parte del listado de
+sources del API, así que **los repositorios sin ninguna sesión también
+salen** —con `current` ausente—, que es información: puede significar
+que la cadena de la GitHub Action se rompió.
+
+`current` es la sesión viva más reciente; si no hay ninguna viva, la que
+más atención requiere. Ausente si el repositorio no tiene sesiones.
+
+La referencia al issue —`[E02-017]`, `[TASK-1.12]`, `[US 7.01]`— vive
+dentro de `title` y **no viaja como campo aparte**: es convención del
+arquitecto, no dato del API, y no todos los títulos la llevan.
+Extraerla es decisión de presentación.
+
+Vienen ordenados por urgencia: primero lo que requiere atención, luego
+lo que trabaja, y al final lo callado.
+
+**Archivar un repositorio es cosa de la app**, no de Moon-Jules: es un
+filtro de vista y no altera el monitoreo. La app guarda esa decisión
+donde le convenga; aquí llegan todos.
 
 ## `decisions`
 

@@ -190,6 +190,13 @@ class Monitor:
     #: Ajustes remotos vigentes, refrescados en cada ciclo.
     abandon_h: int | None = None
     prompt: str | None = None
+    #: Sources del API, cacheados. Cambian poco: se refrescan en los
+    #: ciclos completos, no en cada uno.
+    #:
+    #: `None` significa "aun no cargados" y la lista vacia significa
+    #: "cargados, no hay ninguno". Usar la lista vacia para ambas cosas
+    #: hacia repedirlos en cada ciclo cuando de verdad no habia.
+    _sources: list[dict] | None = None
 
     async def cycle(
         self,
@@ -200,7 +207,13 @@ class Monitor:
         standby: bool = False,
     ) -> Report:
         at = now()
-        report = Report(at=at)
+        if full or self._sources is None:
+            # Una peticion mas, solo en los ciclos completos. Hace falta
+            # para que la vista por proyecto vea los repositorios sin
+            # ninguna sesion, que hoy no aparecen en ningun sitio.
+            with contextlib.suppress(MoonJulesError):
+                self._sources = await self.client.sources()
+        report = Report(at=at, sources=self._sources or [])
         prog = progress or Progress(enabled=False)
 
         sessions = await self._collect(full=full, prog=prog)

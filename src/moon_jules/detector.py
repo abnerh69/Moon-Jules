@@ -400,6 +400,12 @@ class Report:
     findings: list[Finding] = field(default_factory=list)
     #: Ambitos con la autonomia pausada: "*" global, o el name del source.
     paused: dict[str, str] = field(default_factory=dict)
+    #: Todos los sources conocidos, tengan sesiones o no.
+    #:
+    #: Hacen falta enteros para la vista por proyecto: un repositorio
+    #: cuyo trabajo va bien no aparece en `findings`, y uno sin ninguna
+    #: sesion tampoco. Ambos casos son informacion.
+    sources: list[dict] = field(default_factory=list)
 
     @property
     def attention(self) -> list[Finding]:

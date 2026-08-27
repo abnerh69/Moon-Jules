@@ -129,10 +129,13 @@ def test_el_coste_estable_es_solo_lo_vivo(tmp_path):
         client = FakeJules([*fallidas, *vivas, *hechas], acts, pages=6)
         mon = Monitor(client, cfg, store)
         run(mon.cycle())
-        assert client.requests == 6 + 20   # primer ciclo: paga el historial
+        # primer ciclo: historial completo + el listado de sources
+        assert client.requests == 6 + 20 + 1
         client.requests = 0
         run(mon.cycle())
-        # 1 pagina de novedades + 9 relecturas + 9 actividades
+        # 1 pagina de novedades + 9 relecturas + 9 actividades.
+        # Los sources NO se repiden: cambian poco y se cachean hasta el
+        # siguiente ciclo completo.
         assert client.requests == 1 + 9 + 9
         assert len(client.since_calls) == 1, "no debe repaginar el historial"
 
@@ -542,3 +545,18 @@ def test_doctor_puede_saber_que_version_corre_el_servicio(tmp_path):
         assert store.db.execute(
             "SELECT value FROM meta WHERE key='version_en_marcha'"
         ).fetchone()["value"] == "0.15.0"
+
+
+def test_los_sources_no_se_repiden_cuando_no_hay_ninguno(tmp_path):
+    """«Aún no cargados» y «cargados, no hay ninguno» son estados
+    distintos. Confundirlos hacía repedir el listado en cada ciclo."""
+    cfg = config(tmp_path)
+    with Store(cfg.state_path) as store:
+        client = FakeJules([], {})
+        mon = Monitor(client, cfg, store)
+        run(mon.cycle())
+        primero = client.requests
+        client.requests = 0
+        run(mon.cycle())
+        assert client.requests < primero
+        assert client.requests == 1, "solo la pagina de novedades"
