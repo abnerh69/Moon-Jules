@@ -158,3 +158,27 @@ class Notifier:
                     f.verdict.value,
                 )
         return sent
+
+    def notify_sources(self, hallazgos: list, now) -> int:
+        """Avisa de las cintas paradas.
+
+        La suppresion se comparte con las sesiones usando el nombre del
+        repositorio como clave: sin ella, un proyecto parado avisaria en
+        cada ciclo hasta que alguien lo mirara.
+        """
+        if not self.enabled or not self.backends:
+            return 0
+        sent = 0
+        for h in hallazgos:
+            if not h.needs_attention:
+                continue
+            if not self.store.should_notify(
+                h.source, h.verdict.value, now, self.cooldown_s
+            ):
+                continue
+            title = f"Moon-Jules: {h.repo}"
+            body = f"La cinta no avanza — {h.reason}"
+            if any(b.send(title, body) for b in self.backends):
+                self.store.record_notification(h.source, h.verdict.value, now)
+                sent += 1
+        return sent

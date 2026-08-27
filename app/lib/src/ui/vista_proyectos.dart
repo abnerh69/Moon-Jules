@@ -55,7 +55,20 @@ class FilaProyecto extends ConsumerWidget {
     return ListTile(
       dense: true,
       leading: _Semaforo(fuente: fuente, apagado: archivado),
-      title: Text(fuente.repo, maxLines: 1, overflow: TextOverflow.ellipsis),
+      title: Row(
+        children: [
+          Expanded(
+            child: Text(fuente.repo,
+                maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+          if (fuente.sesiones > 0)
+            Text(
+              '${fuente.hechas}✓'
+              '${fuente.rotas > 0 ? '  ${fuente.rotas}✗' : ''}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+        ],
+      ),
       subtitle: Text(
         _subtitulo(fuente, ref_),
         maxLines: 1,
@@ -80,6 +93,8 @@ class FilaProyecto extends ConsumerWidget {
   }
 
   static String _subtitulo(ResumenSource f, String? referencia) {
+    // Lo que no se ve por ningún otro sitio va primero.
+    if (f.cintaParada) return f.motivoCinta ?? 'la cinta no avanza';
     if (f.callado) return 'sin sesiones';
     final act = f.actual;
     if (act == null) return '${f.sesiones} sesiones';
@@ -101,6 +116,10 @@ class _Semaforo extends StatelessWidget {
   Widget build(BuildContext context) {
     final (icono, color) = switch (fuente) {
       final f when f.preocupa => (Icons.error_outline, Colors.redAccent),
+      // La cinta parada es el fallo silencioso: algo terminó y no
+      // arrancó nada. Sin esto, un proyecto muerto se ve igual que uno
+      // que va bien.
+      final f when f.cintaParada => (Icons.pause_circle_filled, Colors.amber),
       final f when f.trabajando => (Icons.play_circle_outline, Colors.green),
       // Sin sesiones no es lo mismo que sin problemas: puede ser que la
       // cadena de la Action se haya roto y nadie lo sepa.

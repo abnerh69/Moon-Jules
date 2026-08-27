@@ -9,7 +9,7 @@
 library;
 
 /// Versión del esquema que esta app entiende.
-const int kEsquemaSoportado = 6;
+const int kEsquemaSoportado = 7;
 
 /// Lanzada cuando el snapshot viene en una versión desconocida.
 ///
@@ -68,6 +68,7 @@ enum Veredicto {
   queuedSlow('queued_slow'),
   pausedStale('paused_stale'),
   failed('failed'),
+  longRunning('long_running'),
   nudgeUnanswered('nudge_unanswered'),
   nudgeBudgetSpent('nudge_budget_spent'),
   /// Veredicto que esta versión de la app no conoce.
@@ -341,6 +342,31 @@ class TareaActual {
   final String? titulo;
 }
 
+/// Cómo va la cinta transportadora de un repositorio.
+///
+/// Cuando una sesión termina, el repositorio toma uno de tres caminos:
+/// arranca otra sesión, la misma se reanuda para corregir, o no pasa
+/// nada. Los dos primeros dejan una sesión activa; el tercero es el que
+/// no se ve, y es el que esta señal existe para delatar.
+enum EstadoCinta {
+  enMovimiento('moving'),
+  parada('belt_stopped'),
+  sinTrabajo('idle'),
+  desconocido('desconocido');
+
+  const EstadoCinta(this.clave);
+
+  final String clave;
+
+  static EstadoCinta desde(Object? valor) {
+    final texto = leerTexto(valor);
+    for (final e in EstadoCinta.values) {
+      if (e.clave == texto) return e;
+    }
+    return EstadoCinta.desconocido;
+  }
+}
+
 /// Un repositorio y cómo va.
 ///
 /// Viene del resumen por source del snapshot, no de `sessions[]`: ahí
@@ -355,6 +381,10 @@ class ResumenSource {
     this.sesiones = 0,
     this.ultimaSenal,
     this.actual,
+    this.hechas = 0,
+    this.rotas = 0,
+    this.cinta = EstadoCinta.desconocido,
+    this.motivoCinta,
   });
 
   factory ResumenSource.desdeJson(Map<String, Object?> json) {
@@ -368,6 +398,10 @@ class ResumenSource {
       ultimaSenal:
           DateTime.tryParse(leerTexto(json['last_signal_at']) ?? '')?.toUtc(),
       actual: act == null ? null : TareaActual.desdeJson(leerMapa(act)),
+      hechas: leerEntero(json['done']) ?? 0,
+      rotas: leerEntero(json['failed']) ?? 0,
+      cinta: EstadoCinta.desde(json['belt']),
+      motivoCinta: leerTexto(json['belt_reason']),
     );
   }
 
@@ -378,6 +412,17 @@ class ResumenSource {
   final int sesiones;
   final DateTime? ultimaSenal;
   final TareaActual? actual;
+
+  /// De dónde viene el proyecto: cuántas tareas quedaron hechas y
+  /// cuántas se rompieron. Cuántas faltan por delante son issues, y
+  /// esos viven en GitHub, no en Jules.
+  final int hechas;
+  final int rotas;
+
+  final EstadoCinta cinta;
+  final String? motivoCinta;
+
+  bool get cintaParada => cinta == EstadoCinta.parada;
 
   /// Clave para guardar el archivado en RTDB.
   ///

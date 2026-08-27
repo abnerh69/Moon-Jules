@@ -22,6 +22,10 @@ Map<String, Object?> fuente(
   int sesiones = 0,
   String? titulo,
   String veredicto = 'healthy',
+  int hechas = 0,
+  int rotas = 0,
+  String? cinta,
+  String? motivo,
 }) =>
     {
       'id': 'sources/github/$repo',
@@ -29,6 +33,10 @@ Map<String, Object?> fuente(
       'active': activas,
       'attention': atencion,
       'sessions': sesiones,
+      'done': hechas,
+      'failed': rotas,
+      if (cinta != null) 'belt': cinta,
+      if (motivo != null) 'belt_reason': motivo,
       if (titulo != null)
         'current': <String, Object?>{
           'id': 's1',
@@ -194,6 +202,61 @@ void main() {
         (tester) async {
       await montarProyectos(tester, fuentes: []);
       expect(find.text('Todavía no hay repositorios'), findsOneWidget);
+    });
+  });
+
+  group('la cinta transportadora', () {
+    test('los tres caminos se distinguen', () {
+      EstadoCinta leer(String? v) =>
+          ResumenSource.desdeJson(fuente('a/b', cinta: v)).cinta;
+      expect(leer('moving'), EstadoCinta.enMovimiento);
+      expect(leer('belt_stopped'), EstadoCinta.parada);
+      expect(leer('idle'), EstadoCinta.sinTrabajo);
+    });
+
+    test('un estado que esta app no conozca no la tumba', () {
+      expect(ResumenSource.desdeJson(fuente('a/b', cinta: 'del_futuro')).cinta,
+          EstadoCinta.desconocido);
+      expect(ResumenSource.desdeJson(fuente('a/b')).cinta,
+          EstadoCinta.desconocido);
+    });
+
+    testWidgets('una cinta parada lo dice, y en primer lugar', (tester) async {
+      // Es el fallo silencioso: algo terminó y no arrancó nada. Sin
+      // esto, un proyecto muerto se ve igual que uno que va bien.
+      await montarProyectos(tester, fuentes: [
+        fuente('a/parado',
+            sesiones: 12, hechas: 12, cinta: 'belt_stopped',
+            motivo: 'nada nuevo desde hace 3 h'),
+      ]);
+      expect(find.text('nada nuevo desde hace 3 h'), findsOneWidget);
+    });
+
+    testWidgets('una cinta en movimiento no alarma', (tester) async {
+      await montarProyectos(tester, fuentes: [
+        fuente('a/vivo',
+            activas: 1, sesiones: 8, hechas: 7, titulo: '[E1] algo',
+            cinta: 'moving'),
+      ]);
+      expect(find.textContaining('cinta'), findsNothing);
+      expect(find.textContaining('E1'), findsOneWidget);
+    });
+  });
+
+  group('el contador', () {
+    testWidgets('muestra de dónde viene el proyecto', (tester) async {
+      await montarProyectos(tester, fuentes: [
+        fuente('a/b', sesiones: 50, hechas: 47, rotas: 3, activas: 1,
+            titulo: '[E5] tarea'),
+      ]);
+      expect(find.textContaining('47'), findsOneWidget);
+      expect(find.textContaining('3'), findsWidgets);
+    });
+
+    testWidgets('sin sesiones no se muestra un contador vacío',
+        (tester) async {
+      await montarProyectos(tester, fuentes: [fuente('a/nuevo')]);
+      expect(find.textContaining('0✓'), findsNothing);
     });
   });
 }

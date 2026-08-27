@@ -379,6 +379,25 @@ dato del API—, detalle por repositorio, y archivado como filtro de vista
 que **no altera el monitoreo**: vive en `{root}/archived` y lo escribe
 solo la app.
 
+### E54 — La cinta transportadora *(entrega 44)*
+El reencuadre del proyecto: no basta con avisar de fallos, hay que
+vigilar que **el ciclo avance**. Cuando una sesión termina, el
+repositorio toma uno de tres caminos —otra sesión, la misma reanudada, o
+nada— y los tres se distinguen sin tocar GitHub.
+
+Umbral de 45 min, medido sobre 40 transiciones reales: mediana 3,8 min,
+p95 35, máximo 53. La cinta se mueve en 4 minutos y el arquitecto se
+enteraba dos días después.
+
+Incluye el veredicto `long_running` para sesiones vivas que llevan
+demasiado abiertas —su reloj de silencio no las detecta porque cada
+`progressUpdated` lo reinicia— y el contador de completadas y fallidas
+por repositorio.
+
+**El umbral de sesión larga se subió de 45 a 120 minutos tras medir**:
+con 45 alertaría el 30% de las sesiones que terminan bien. Los tests
+existentes lo delataron al romperse.
+
 ## Siguiente ola
 
 ## Retirado

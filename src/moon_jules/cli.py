@@ -1335,6 +1335,12 @@ async def cmd_watch(cfg: Config, args: argparse.Namespace) -> int:
 
 def _emit(report: Report, notifier: Notifier, quiet: bool = False) -> None:
     stamp = report.at.strftime("%H:%M:%S")
+    paradas = [h for h in report.source_findings if h.needs_attention]
+    for h in paradas:
+        log.warning("cinta parada en %s: %s", h.repo, h.reason)
+    if paradas and not quiet:
+        print(f"[{stamp}] cinta parada: " + ", ".join(h.repo for h in paradas))
+    notifier.notify_sources(paradas, report.at)
     if report.attention:
         if not quiet:
             print(f"\n[{stamp}]\n{render(report, only_attention=True)}")

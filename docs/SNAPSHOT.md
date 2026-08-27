@@ -1,13 +1,14 @@
 # Contrato del snapshot
 
 ```meta
-Esquema:  6
-Desde:    Moon-Jules v0.23.0 (entrega 42)
+Esquema:  7
+Desde:    Moon-Jules v0.24.0 (entrega 44)
 Historia: 1 — entrega 13. 2 — añade `control` y `instance.role`.
           3 — añade `instance.heartbeat_ms` y el canal de comandos.
           4 — añade `sessions[].last_agent_message`.
           5 — añade `last_agent_at` y `last_agent_kind`.
           6 — añade `sources[]`, resumen por repositorio.
+          7 — añade `belt`, `done` y `failed` a cada repositorio.
 Estado:   Estable
 ```
 
@@ -348,6 +349,10 @@ proyecto** aunque todo vaya bien.
   "active": 1,
   "attention": 0,
   "sessions": 3,
+  "done": 47,
+  "failed": 3,
+  "belt": "moving",
+  "belt_reason": "1 sesion(es) en curso",
   "last_signal_at": "2026-08-26T18:30:00Z",
   "current": {
     "id": "4954617217501385202",
@@ -372,6 +377,30 @@ La referencia al issue —`[E02-017]`, `[TASK-1.12]`, `[US 7.01]`— vive
 dentro de `title` y **no viaja como campo aparte**: es convención del
 arquitecto, no dato del API, y no todos los títulos la llevan.
 Extraerla es decisión de presentación.
+
+### La cinta transportadora
+
+Cuando una sesión termina, el repositorio toma uno de tres caminos:
+arranca otra sesión, la misma se reanuda para corregir, o **no pasa
+nada**. Los dos primeros dejan una sesión activa; el tercero es el que
+no se ve, y `belt` existe para delatarlo.
+
+| `belt` | Qué significa |
+|---|---|
+| `moving` | Hay sesión en curso, o acaba de terminar una y aún está dentro del plazo de transición. |
+| `belt_stopped` | Algo terminó y no arrancó nada. O la Action no fusionó, o no quedan issues. |
+| `idle` | Ninguna sesión, nunca. |
+
+El plazo sale de medir 40 transiciones reales del enjambre: mediana
+3,8 min, p90 20, p95 35, máximo 53. Con **45 minutos** quedan fuera el
+98% de las transiciones normales.
+
+Solo se marca `belt_stopped` si **nada más requiere atención** en ese
+repositorio: si una sesión ya está gritando, decir además que la cinta
+no avanza es repetir lo mismo con otras palabras.
+
+`done` y `failed` dicen de dónde viene el proyecto. Cuántas tareas
+faltan por delante son issues, y esos viven en GitHub.
 
 Vienen ordenados por urgencia: primero lo que requiere atención, luego
 lo que trabaja, y al final lo callado.

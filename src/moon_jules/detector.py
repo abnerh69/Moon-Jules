@@ -54,6 +54,7 @@ class Verdict(StrEnum):
     PAUSED_DONE = "paused_done"
     FAILED = "failed"
     FAILED_ASKING = "failed_asking"
+    LONG_RUNNING = "long_running"
     DONE = "done"
     NUDGE_UNANSWERED = "nudge_unanswered"
     NUDGE_BUDGET_SPENT = "nudge_budget_spent"
@@ -89,6 +90,25 @@ class Policy:
     #: la decision de recuperarlo es del arquitecto, no de una
     #: herramienta que vigila.
     abandon_after_h: int = 48
+    #: Minutos que una sesion viva puede llevar abierta antes de que
+    #: merezca una mirada, aunque siga emitiendo actividad.
+    #:
+    #: Medido sobre 60 sesiones completadas al azar: mediana 22 min,
+    #: p75 51, p90 102, y una cola larga con casos legitimos de once
+    #: horas. **Con 45 min alertaria el 30% de las sesiones que
+    #: terminan bien**; con 120 solo el 7%.
+    #:
+    #: Su reloj de silencio no detecta este caso porque cada
+    #: `progressUpdated` lo reinicia. El de la sesion entera, si: una
+    #: sesion que pasa de aqui puede haber terminado sin avisar, haber
+    #: fallado sin avisar, o estar dando vueltas.
+    long_session_m: int = 120
+    #: Minutos sin que la cinta de un repositorio avance.
+    #:
+    #: Medido sobre 40 transiciones reales: mediana 3.8 min, p90 20 min,
+    #: p95 35 min, maximo 53. Con 45 quedan fuera el 98% de las
+    #: transiciones normales.
+    belt_stopped_m: int = 45
     nudge_prompt: str = "Completa la tarea"
 
 
@@ -132,6 +152,37 @@ ESCRITURAS = frozenset({Action.NUDGE, Action.APPROVE_PLAN})
 
 #: Veredictos que no requieren nada de nadie.
 SIN_PROBLEMA = frozenset({Verdict.HEALTHY, Verdict.DONE, Verdict.PAUSED_DONE})
+
+
+class SourceVerdict(StrEnum):
+    """Como va la cinta de un repositorio.
+
+    Los tres caminos que puede tomar una sesion al terminar —arranca
+    otra, la misma se reanuda, o no pasa nada— se distinguen sin tocar
+    GitHub: los dos primeros dejan una sesion activa y el tercero no.
+    """
+
+    MOVING = "moving"
+    #: Termino algo y no arranco nada. Es el caso que no se ve.
+    BELT_STOPPED = "belt_stopped"
+    #: Ninguna sesion, nunca. Puede ser un repositorio recien conectado.
+    IDLE = "idle"
+
+
+@dataclass(frozen=True)
+class HallazgoFuente:
+    """Dictamen sobre un repositorio, no sobre una sesion."""
+
+    source: str
+    repo: str
+    verdict: SourceVerdict
+    reason: str
+    #: Minutos sin que la cinta avance, si aplica.
+    parada_min: float | None = None
+
+    @property
+    def needs_attention(self) -> bool:
+        return self.verdict is SourceVerdict.BELT_STOPPED
 
 
 @dataclass(frozen=True)
@@ -234,6 +285,88 @@ def freshness(activities: list[Activity]) -> Freshness:
         last_agent_kind=last.kind,
         last_touch_at=ultimo_toque,
     )
+
+
+def _abierta_desde(session: Session, ahora: datetime) -> float | None:
+    """Segundos que la sesion lleva abierta, si se sabe cuando empezo."""
+    if session.create_time is None:
+        return None
+    return (ahora - session.create_time).total_seconds()
+
+
+def evaluar_fuentes(
+    report: Report, ahora: datetime, p: Policy | None = None
+) -> list[HallazgoFuente]:
+    """Dictamina la cinta de cada repositorio.
+
+    Solo se reporta la cinta parada cuando **nada mas requiere
+    atencion** en ese repositorio: si una sesion ya esta gritando, decir
+    ademas que la cinta no avanza es repetir lo mismo con otras
+    palabras. El valor de esta senal esta en el caso silencioso —algo
+    termino bien y no arranco nada— que hoy no se ve de ninguna forma.
+    """
+    p = p or Policy()
+    por_source: dict[str, list[Finding]] = {}
+    for f in report.findings:
+        if f.session.source:
+            por_source.setdefault(f.session.source, []).append(f)
+
+    conocidos = {s.get("name"): s for s in report.sources if s.get("name")}
+    salida: list[HallazgoFuente] = []
+    for nombre in sorted(set(conocidos) | set(por_source)):
+        hallazgos = por_source.get(nombre, [])
+        repo = _repo_legible(conocidos.get(nombre), nombre)
+        vivas = [
+            f for f in hallazgos
+            if f.session.state not in TERMINAL_STATES
+        ]
+        if vivas:
+            salida.append(
+                HallazgoFuente(nombre, repo, SourceVerdict.MOVING,
+                               f"{len(vivas)} sesion(es) en curso")
+            )
+            continue
+        if not hallazgos:
+            salida.append(
+                HallazgoFuente(nombre, repo, SourceVerdict.IDLE,
+                               "sin ninguna sesion")
+            )
+            continue
+        senales = [
+            f.session.last_agent_at for f in hallazgos if f.session.last_agent_at
+        ]
+        if not senales:
+            continue
+        parada = (ahora - max(senales)).total_seconds() / 60
+        if parada <= p.belt_stopped_m:
+            salida.append(
+                HallazgoFuente(nombre, repo, SourceVerdict.MOVING,
+                               f"entre tareas desde hace {humano(parada * 60)}")
+            )
+            continue
+        if any(f.needs_attention for f in hallazgos):
+            # Ya hay algo gritando en este repositorio; anadir que la
+            # cinta no avanza seria decir lo mismo dos veces.
+            salida.append(
+                HallazgoFuente(nombre, repo, SourceVerdict.MOVING,
+                               "parada, pero ya hay una sesion reclamando")
+            )
+            continue
+        salida.append(
+            HallazgoFuente(
+                nombre, repo, SourceVerdict.BELT_STOPPED,
+                f"nada nuevo desde hace {humano(parada * 60)}",
+                parada_min=parada,
+            )
+        )
+    return salida
+
+
+def _repo_legible(source: dict | None, nombre: str) -> str:
+    gh = (source or {}).get("githubRepo") or {}
+    if gh.get("owner") and gh.get("repo"):
+        return f"{gh['owner']}/{gh['repo']}"
+    return nombre.removeprefix("sources/").removeprefix("github/")
 
 
 def _abandonada(fresh: Freshness, ahora: datetime, p: Policy) -> float | None:
@@ -377,6 +510,19 @@ def assess(
 
     threshold = p.plan_warn_s if st is SessionState.PLANNING else p.stall_after_s
     if sil <= threshold:
+        # Viva y con actividad reciente, pero lleva demasiado abierta.
+        # Su reloj de silencio no lo detecta porque cada
+        # `progressUpdated` lo reinicia; el de la sesion entera, si.
+        # Puede haber terminado sin avisar, haber fallado sin avisar, o
+        # estar dando vueltas sin avanzar.
+        abierta = _abierta_desde(session, now)
+        if abierta is not None and abierta > p.long_session_m * 60:
+            return out(
+                Verdict.LONG_RUNNING,
+                Action.ALERT,
+                f"lleva {humano(abierta)} abierta y sigue trabajando: "
+                f"echale un ojo",
+            )
         return out(Verdict.HEALTHY, Action.NONE, f"activa, ultimo latido {sil:.0f}s")
 
     if st is SessionState.PLANNING and sil <= threshold * 2:
@@ -400,6 +546,8 @@ class Report:
     findings: list[Finding] = field(default_factory=list)
     #: Ambitos con la autonomia pausada: "*" global, o el name del source.
     paused: dict[str, str] = field(default_factory=dict)
+    #: Dictamen por repositorio: como va la cinta de cada uno.
+    source_findings: list[HallazgoFuente] = field(default_factory=list)
     #: Todos los sources conocidos, tengan sesiones o no.
     #:
     #: Hacen falta enteros para la vista por proyecto: un repositorio

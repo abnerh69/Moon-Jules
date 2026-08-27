@@ -64,9 +64,25 @@ class DetalleRepositorio extends ConsumerWidget {
               ),
             ),
           _Dato('Sesiones', '${fuente.sesiones}'),
+          _Dato('Completadas', '${fuente.hechas}'),
+          if (fuente.rotas > 0) _Dato('Fallidas', '${fuente.rotas}'),
           _Dato('Trabajando ahora', '${fuente.activas}'),
           _Dato('Requieren atención', '${fuente.atencion}'),
           _Dato('Última señal', fechaCorta(fuente.ultimaSenal)),
+          if (fuente.cintaParada)
+            Card(
+              margin: const EdgeInsets.all(12),
+              color: Colors.amber.shade900,
+              child: ListTile(
+                leading: const Icon(Icons.pause_circle_filled),
+                title: const Text('La cinta no avanza'),
+                subtitle: Text(
+                  '${fuente.motivoCinta ?? ""}\n\n'
+                  'Algo terminó y no arrancó nada después. O la Action '
+                  'no fusionó, o no quedan issues en la cola.',
+                ),
+              ),
+            ),
           if (fuente.callado)
             const Card(
               margin: EdgeInsets.all(12),

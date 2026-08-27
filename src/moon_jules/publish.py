@@ -46,7 +46,7 @@ log = get_logger("publish")
 #: Versión del esquema. Se sube al añadir campos; se sube de mayor al
 #: quitar o cambiar el significado de uno. La app debe rechazar lo que
 #: no entienda en vez de interpretarlo a medias.
-SCHEMA = 6
+SCHEMA = 7
 
 #: Cuántas sesiones caben en el snapshot. Con el tope de 15 concurrentes
 #: del plan, 40 deja sitio de sobra para lo activo más lo que requiere
@@ -281,6 +281,7 @@ def _sources(report: Report, ahora: datetime) -> list[dict]:
             por_source.setdefault(f.session.source, []).append(f)
 
     conocidos = {s.get("name"): s for s in report.sources if s.get("name")}
+    cinta = {h.source: h for h in report.source_findings}
     salida = []
     for nombre in sorted(set(conocidos) | set(por_source)):
         hallazgos = por_source.get(nombre, [])
@@ -306,6 +307,18 @@ def _sources(report: Report, ahora: datetime) -> list[dict]:
                 "active": len(vivas),
                 "attention": len(atencion),
                 "sessions": len(hallazgos),
+                # De donde viene el proyecto: cuantas quedaron hechas y
+                # cuantas se rompieron. Cuantas faltan por delante son
+                # issues, y esos viven en GitHub.
+                "done": sum(
+                    1 for f in hallazgos
+                    if f.session.state.value == "COMPLETED"
+                ),
+                "failed": sum(
+                    1 for f in hallazgos if f.session.state.value == "FAILED"
+                ),
+                "belt": (cinta[nombre].verdict.value if nombre in cinta else None),
+                "belt_reason": (cinta[nombre].reason if nombre in cinta else None),
                 "last_signal_at": _iso(max(senales)) if senales else None,
                 "current": (
                     {
