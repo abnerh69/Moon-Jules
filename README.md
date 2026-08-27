@@ -261,7 +261,7 @@ Android no modifica uno ya creado. Borra las credenciales guardadas.
 
 `app/` contiene el panel que consume lo publicado. Su capa de datos y su
 lógica de presentación son Dart puro y se prueban sin emulador: `cd app
-&& flutter test` (116 tests). Ver `app/README.md`.
+&& flutter test` (132 tests). Ver `app/README.md`.
 
 ## Documentación
 

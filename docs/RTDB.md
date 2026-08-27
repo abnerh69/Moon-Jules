@@ -118,6 +118,13 @@ moon-jules relay         # debe leer el control
         }
       },
 
+      "archived": {
+        "$repo": {
+          ".write": "auth.uid === 'UID_ARQUITECTO'",
+          ".validate": "newData.isBoolean() || newData.val() === null"
+        }
+      },
+
       "command": {
         ".write": "auth.uid === 'UID_ARQUITECTO'",
         ".validate": "newData.val() === null || newData.hasChildren(['id', 'verb', 'issued_at', 'expires_at'])"
@@ -171,6 +178,17 @@ La misma cuenta de servicio envía por FCM: mismo proyecto, ámbito
 `fcm = true` en `[notify]`.
 
 La app escribe su token en `{root}/devices/{token}` con valor `true`.
+
+## Repositorios archivados
+
+`{root}/archived/{owner__repo}` guarda qué repositorios no quiere ver el
+arquitecto en la lista. **Lo escribe y lo lee solo la app**: archivar es
+un filtro de vista y Moon-Jules ni se entera. Un repositorio archivado
+que falle sigue alertando y reactivándose igual.
+
+La clave usa `__` en lugar de `/` porque las claves de RTDB no admiten
+barras, y se deriva del repositorio y no del `id` del API para que se
+lea en la consola.
 Moon-Jules lo lee y retira solo los que FCM declara muertos.
 
 ## Coste

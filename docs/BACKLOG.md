@@ -371,10 +371,13 @@ ninguna sesión también aparezcan** — posible cadena rota.
 
 Cuesta una petición más, solo en los ciclos completos. Esquema 5 → 6.
 
-### E53 — La pantalla por proyecto *(siguiente)*
-Segunda mitad: lista de repositorios con su tarea actual, detalle por
-repositorio, y el archivado como filtro de vista que **no altera el
-monitoreo**. Archivar vive en la app, no en Moon-Jules.
+### E53 — La pantalla por proyecto *(entrega 43)*
+Dos pestañas: «Atención» responde qué atender, «Proyectos» responde cómo
+va el enjambre. Lista de repositorios con su tarea actual y la
+referencia al issue extraída del título —convención del arquitecto, no
+dato del API—, detalle por repositorio, y archivado como filtro de vista
+que **no altera el monitoreo**: vive en `{root}/archived` y lo escribe
+solo la app.
 
 ## Siguiente ola
 

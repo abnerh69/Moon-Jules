@@ -287,6 +287,26 @@ String resumenTiempo(SesionVista s) {
   return '';
 }
 
+/// Extrae la referencia al issue del título de una tarea.
+///
+/// `[E02-017] Validación end-to-end` → `E02-017`.
+///
+/// Es **convención del arquitecto, no dato del API**, así que no viaja
+/// como campo en el snapshot y no todos los títulos la llevan. Ausente
+/// se devuelve `null`, nunca una cadena inventada.
+String? referenciaDe(String? titulo) {
+  if (titulo == null) return null;
+  final m = RegExp(r'^\s*\[([^\]]{1,24})\]').firstMatch(titulo);
+  final ref = m?.group(1)?.trim();
+  return (ref == null || ref.isEmpty) ? null : ref;
+}
+
+/// El título sin su referencia, para no repetirla en pantalla.
+String tituloSinReferencia(String? titulo) {
+  if (titulo == null) return '';
+  return titulo.replaceFirst(RegExp(r'^\s*\[[^\]]{1,24}\]\s*'), '').trim();
+}
+
 /// Fecha corta y legible: `14 may 2026`.
 String fechaCorta(DateTime? t) {
   if (t == null) return '—';

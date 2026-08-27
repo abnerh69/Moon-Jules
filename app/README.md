@@ -142,9 +142,34 @@ columna sin nombre pasarían por lo mismo. Las fallidas no tienen tiempo
 de silencio, porque su reloj está congelado; ahí se muestra la edad, que
 sí se conoce.
 
+## Dos vistas
+
+**Atención** responde «¿qué tengo que atender?»: solo lo que va mal. Es
+la que importa cuando suena el teléfono.
+
+**Proyectos** responde «¿cómo va el enjambre?»: todos los repositorios,
+con la tarea en la que anda cada uno. Necesita el resumen por source del
+snapshot, porque `sessions[]` solo lleva lo problemático y lo activo y un
+repositorio que va bien sería invisible.
+
+La referencia al issue —`[E02-017]`, `[TASK-1.12]`— se extrae del
+título. Es convención del arquitecto, no dato del API, así que no todos
+la llevan y ausente no se inventa ninguna.
+
+## Archivar
+
+Un filtro de vista, nada más. **Moon-Jules ni se entera**: un
+repositorio archivado que falle sigue alertando y reactivándose igual.
+Para dejar de recibir avisos de un repositorio concreto está `pause` por
+source, que es la herramienta pensada para eso.
+
+Se archiva y se saca del archivo desde la lista o desde el detalle, y
+los archivados se ven desplegando su sección al final.
+
 ## Lo que la app sí escribe
 
-Un solo campo: `control/desired`, al designar qué instancia vigila. Y es
+`control/desired` al designar qué instancia vigila, y `archived` al
+ocultar un repositorio de la lista. Y es
 **una propuesta, no una orden cumplida**: la instancia elegida confirma
 en su siguiente ciclo escribiendo su reclamación, y la pantalla muestra
 las dos cosas.

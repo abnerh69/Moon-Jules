@@ -87,6 +87,26 @@ final avisosProvider = StreamProvider<RegistroAvisos>((ref) async* {
   yield* repo.tokensRenovados().map(RegistroAvisos.ok);
 });
 
+final archivadosProvider = StreamProvider<Set<String>>(
+  (ref) => ref.watch(repositorioProvider).archivados(),
+);
+
+/// Repositorios visibles, ya filtrados y ordenados.
+final proyectosProvider = Provider<List<ResumenSource>>((ref) {
+  final panel = ref.watch(panelProvider).valueOrNull;
+  final ocultos = ref.watch(archivadosProvider).valueOrNull ?? const <String>{};
+  final fuentes = panel?.enjambre?.fuentes ?? const <ResumenSource>[];
+  return fuentes.where((f) => !ocultos.contains(f.clave)).toList();
+});
+
+/// Los archivados, para poder sacarlos del archivo.
+final proyectosArchivadosProvider = Provider<List<ResumenSource>>((ref) {
+  final panel = ref.watch(panelProvider).valueOrNull;
+  final ocultos = ref.watch(archivadosProvider).valueOrNull ?? const <String>{};
+  final fuentes = panel?.enjambre?.fuentes ?? const <ResumenSource>[];
+  return fuentes.where((f) => ocultos.contains(f.clave)).toList();
+});
+
 /// Sesión concreta, para la ventana de detalle.
 final sesionProvider = Provider.family<SesionVista?, String>((ref, id) {
   final panel = ref.watch(panelProvider).valueOrNull;

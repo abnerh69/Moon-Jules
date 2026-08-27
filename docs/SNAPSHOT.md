@@ -397,6 +397,6 @@ No hay canal de comandos. La app **lee**; no nudgea, no aprueba planes,
 no silencia. Abrir esa vía trae autenticación, idempotencia y órdenes que
 pueden ejecutarse dos veces, y no cabe en la primera versión.
 
-El teléfono escribe exactamente dos nodos: `control/desired` y
-`command`. Nada más. Y las reglas de seguridad lo imponen: no puede
+El teléfono escribe exactamente tres nodos: `control/desired`, `command`
+y `archived`. Nada más. Y las reglas de seguridad lo imponen: no puede
 falsificar una reclamación ni escribir en el snapshot de una instancia.

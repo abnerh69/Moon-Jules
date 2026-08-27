@@ -17,6 +17,7 @@ import '../data/repositorio.dart';
 import '../providers.dart';
 import 'detalle_sesion.dart';
 import 'detalle_relevo.dart';
+import 'vista_proyectos.dart';
 
 class PantallaPanel extends ConsumerWidget {
   const PantallaPanel({super.key});
@@ -27,9 +28,20 @@ class PantallaPanel extends ConsumerWidget {
     // Se observa aquí para que el registro ocurra al abrir la app y
     // siga vivo mientras lo esté.
     final avisos = ref.watch(avisosProvider);
-    return Scaffold(
+    // Dos vistas, dos preguntas distintas: «¿qué tengo que atender?» y
+    // «¿cómo va el enjambre?». La primera es la que importa cuando
+    // suena el teléfono; la segunda, cuando uno se sienta a mirar.
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('Moon-Jules'),
+        bottom: const TabBar(
+          tabs: [
+            Tab(text: 'Atención'),
+            Tab(text: 'Proyectos'),
+          ],
+        ),
         actions: [
           IconButton(
             tooltip: 'Relevo',
@@ -49,7 +61,13 @@ class PantallaPanel extends ConsumerWidget {
           titulo: 'No se pudo leer Firebase',
           detalle: '$e',
         ),
-        data: (v) => _Contenido(vista: v, avisos: avisos),
+        data: (v) => TabBarView(
+          children: [
+            _Contenido(vista: v, avisos: avisos),
+            const VistaProyectos(),
+          ],
+        ),
+      ),
       ),
     );
   }

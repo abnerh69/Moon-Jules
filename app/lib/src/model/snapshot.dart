@@ -9,7 +9,7 @@
 library;
 
 /// Versión del esquema que esta app entiende.
-const int kEsquemaSoportado = 5;
+const int kEsquemaSoportado = 6;
 
 /// Lanzada cuando el snapshot viene en una versión desconocida.
 ///
@@ -319,6 +319,85 @@ class Control {
       designada != null && reclamadaPor != designada;
 }
 
+/// Lo que Jules está haciendo ahora en un repositorio.
+class TareaActual {
+  const TareaActual({
+    required this.id,
+    required this.estado,
+    required this.veredicto,
+    this.titulo,
+  });
+
+  factory TareaActual.desdeJson(Map<String, Object?> json) => TareaActual(
+        id: leerTexto(json['id']) ?? '',
+        estado: leerTexto(json['state']) ?? 'STATE_UNSPECIFIED',
+        veredicto: Veredicto.desde(json['verdict']),
+        titulo: leerTexto(json['title']),
+      );
+
+  final String id;
+  final String estado;
+  final Veredicto veredicto;
+  final String? titulo;
+}
+
+/// Un repositorio y cómo va.
+///
+/// Viene del resumen por source del snapshot, no de `sessions[]`: ahí
+/// solo viaja lo problemático y lo activo, así que un repositorio cuyo
+/// trabajo va perfecto sería invisible.
+class ResumenSource {
+  const ResumenSource({
+    required this.id,
+    required this.repo,
+    this.activas = 0,
+    this.atencion = 0,
+    this.sesiones = 0,
+    this.ultimaSenal,
+    this.actual,
+  });
+
+  factory ResumenSource.desdeJson(Map<String, Object?> json) {
+    final act = json['current'];
+    return ResumenSource(
+      id: leerTexto(json['id']) ?? '',
+      repo: leerTexto(json['repo']) ?? '(sin nombre)',
+      activas: leerEntero(json['active']) ?? 0,
+      atencion: leerEntero(json['attention']) ?? 0,
+      sesiones: leerEntero(json['sessions']) ?? 0,
+      ultimaSenal:
+          DateTime.tryParse(leerTexto(json['last_signal_at']) ?? '')?.toUtc(),
+      actual: act == null ? null : TareaActual.desdeJson(leerMapa(act)),
+    );
+  }
+
+  final String id;
+  final String repo;
+  final int activas;
+  final int atencion;
+  final int sesiones;
+  final DateTime? ultimaSenal;
+  final TareaActual? actual;
+
+  /// Clave para guardar el archivado en RTDB.
+  ///
+  /// Las claves de RTDB no admiten `/`, así que se sustituye. Se usa el
+  /// repositorio y no el `id` del API porque se lee en la consola de
+  /// Firebase, y ahí `abnerh69__ppp-n-kits` dice algo.
+  String get clave => repo.replaceAll('/', '__');
+
+  bool get trabajando => activas > 0;
+
+  /// Sin ninguna sesión, ni viva ni muerta.
+  ///
+  /// Puede significar que la cadena de la GitHub Action se rompió: si un
+  /// PR entra en conflicto, el workflow aborta y la cola de ese
+  /// repositorio se queda congelada sin que nadie avise.
+  bool get callado => sesiones == 0;
+
+  bool get preocupa => atencion > 0;
+}
+
 /// El documento completo.
 class Snapshot {
   const Snapshot({
@@ -327,6 +406,7 @@ class Snapshot {
     required this.enjambre,
     required this.control,
     required this.sesiones,
+    this.fuentes = const [],
   });
 
   /// Lanza [EsquemaIncompatible] si la versión no se reconoce.
@@ -341,6 +421,12 @@ class Snapshot {
       instancia: Instancia.desdeJson(leerMapa(json['instance'])),
       enjambre: Enjambre.desdeJson(leerMapa(json['swarm'])),
       control: Control.desdeJson(leerMapa(json['control'])),
+      fuentes: json['sources'] is List
+          ? (json['sources']! as List)
+              .whereType<Object>()
+              .map((f) => ResumenSource.desdeJson(leerMapa(f)))
+              .toList(growable: false)
+          : const [],
       sesiones: crudas is List
           ? crudas
               .whereType<Object>()
@@ -355,6 +441,9 @@ class Snapshot {
   final Enjambre enjambre;
   final Control control;
   final List<SesionVista> sesiones;
+
+  /// Un resumen por repositorio. Vacío en esquemas anteriores al 6.
+  final List<ResumenSource> fuentes;
 
   List<SesionVista> get requierenAtencion =>
       sesiones.where((s) => s.requiereAtencion).toList(growable: false);

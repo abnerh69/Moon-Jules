@@ -28,6 +28,8 @@ class Rutas {
   String control() => '$raiz/control';
   String designada() => '$raiz/control/desired';
   String comando() => '$raiz/command';
+  String archivados() => '$raiz/archived';
+  String archivado(String clave) => '$raiz/archived/$clave';
   String dispositivo(String token) => '$raiz/devices/$token';
 }
 
@@ -148,6 +150,24 @@ class RepositorioMoonJules {
       return null;
     }
   }
+
+  /// Repositorios que el arquitecto ha decidido no ver en la lista.
+  ///
+  /// **Lo escribe y lo lee la app; Moon-Jules ni se entera.** Archivar
+  /// es un filtro de vista y no altera el monitoreo: un repositorio
+  /// archivado que falle seguirá alertando y reactivándose igual.
+  Stream<Set<String>> archivados() =>
+      _db.ref(rutas.archivados()).onValue.map((e) {
+        final crudo = e.snapshot.value;
+        if (crudo is! Map) return <String>{};
+        return {
+          for (final entrada in crudo.entries)
+            if (entrada.value == true) entrada.key.toString(),
+        };
+      });
+
+  Future<void> archivar(String clave, {required bool si}) =>
+      _db.ref(rutas.archivado(clave)).set(si ? true : null);
 
   /// Registra este teléfono para recibir avisos push.
   ///
